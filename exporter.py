@@ -194,34 +194,97 @@ def write_parameters_sheet(writer, config):
 # ------------------------------------------------------------
 # REGIMES SHEET
 # ------------------------------------------------------------
-def write_regimes_sheet(writer, config):
-    rows = []
+def write_regimes_sheet(writer, config, formats):
+    regime_rows = []
     for regime, vals in config["regimes"].items():
         row = {"Regime": regime}
         row.update(vals)
-        rows.append(row)
+        regime_rows.append(row)
 
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(regime_rows)
     df.to_excel(writer, sheet_name="Regimes", index=False)
+    ws = writer.sheets["Regimes"]
+    ws.freeze_panes(1, 1)
 
+    header_fmt = formats["header"]
+    percent_fmt = formats["percent"]
+    text_fmt = formats["text"]
+
+    # Write headers
+    for col_num, col_name in enumerate(df.columns):
+        ws.write(0, col_num, col_name, header_fmt)
+
+    # Write rows w/ formatting
+    for r in range(1, len(df) + 1):
+        row = df.iloc[r - 1]
+        for c, col_name in enumerate(df.columns):
+            val = row[col_name]
+
+            if col_name == "Regime":
+                fmt = text_fmt
+            else:
+                fmt = percent_fmt  # ALL regime fields are %
+
+            safe_write(ws, r, c, val, fmt, text_fmt)
+
+    ws.set_column(0, len(df.columns), 14)
 
 # ------------------------------------------------------------
 # FINAL RESULTS SHEET
 # ------------------------------------------------------------
 def write_results_sheet(writer, equity_df, formats):
-    last = equity_df.tail(1)
+    last = equity_df.tail(1).copy()
+
+    # --- Calculate YoY growth (CAGR)
+    start_val = equity_df["Value"].iloc[0]
+    end_val = equity_df["Value"].iloc[-1]
+    years = (equity_df["Date"].iloc[-1] - equity_df["Date"].iloc[0]).days / 365.25
+
+    if years > 0:
+        cagr = (end_val / start_val) ** (1 / years) - 1
+    else:
+        cagr = 0
+
+    # Add CAGR to the results row
+    last.insert(len(last.columns), "Avg_YoY_Growth", cagr)
+
+    # Create sheet
     sheet_name = "Results"
     last.to_excel(writer, sheet_name=sheet_name, index=False)
     ws = writer.sheets[sheet_name]
 
-    # Headers
-    for col_num, col_name in enumerate(last.columns):
-        ws.write(0, col_num, col_name, formats["header"])
+    fmt_text = formats["text"]
+    header_fmt = formats["header"]
 
-    # Highlight final value
+    # Header row
+    for col_num, col_name in enumerate(last.columns):
+        ws.write(0, col_num, col_name, header_fmt)
+
+    # Format correct column types
+    for col_num, col_name in enumerate(last.columns):
+        val = last.iloc[0][col_name]
+
+        if col_name == "Date":
+            fmt = formats["date"]
+        elif col_name == "Value" or "_price" in col_name or "_value" in col_name:
+            fmt = formats["dollar"]
+        elif "Pct" in col_name or "Growth" in col_name or "YoY" in col_name:
+            fmt = formats["percent"]
+        elif "_norm" in col_name:
+            fmt = formats["dollar"]
+        elif "_shares" in col_name:
+            fmt = formats["number"]
+        else:
+            fmt = fmt_text
+
+        safe_write(ws, 1, col_num, val, fmt, fmt_text)
+
+    ws.set_column(0, len(last.columns), 16)
+
+    # Highlight final portfolio value cell
     val_idx = last.columns.get_loc("Value")
-    final_val = last.iloc[0]["Value"]
-    safe_write(ws, 1, val_idx, final_val, formats["final_value"], formats["text"])
+    safe_write(ws, 1, val_idx, last.iloc[0]["Value"], formats["final_value"], fmt_text)
+
 
 
 # ======================================================================
@@ -245,7 +308,7 @@ def export_to_excel(equity_df, quarterly_df, config):
     write_chart_sheet(workbook, equity_df)
     write_quarterly_sheet(writer, quarterly_df, formats)
     write_parameters_sheet(writer, config)
-    write_regimes_sheet(writer, config)
+    write_regimes_sheet(writer, config, formats)  # <-- FIXED
     write_results_sheet(writer, equity_df, formats)
 
     writer.close()
