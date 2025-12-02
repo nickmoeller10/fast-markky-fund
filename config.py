@@ -2,7 +2,7 @@
 
 CONFIG = {
     "starting_balance": 10000,
-    "start_date": "2010-12-01",
+    "start_date": "2010-12-02",
 
     # ============================================================
     # REBALANCE SETTINGS
