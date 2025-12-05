@@ -24,10 +24,13 @@ def determine_regime(dd_value, config, date=None):
     regime_keys = list(config["regimes"].keys())
 
     for i, regime in enumerate(regime_keys):
+
         params = config["regimes"][regime]
 
         low = params["dd_low"]
         high = params["dd_high"]
+        log(f"Checking {regime}: low={low}, high={high}, dd={dd_value:.4f}")
+
         is_last = (i == len(regime_keys) - 1)
 
         # Last regime uses inclusive high

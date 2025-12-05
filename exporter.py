@@ -1,4 +1,3 @@
-
 import pandas as pd
 import xlsxwriter
 import os
@@ -18,7 +17,7 @@ def get_unique_filename(base="backtest_results", ext="xlsx"):
 
 
 # ------------------------------------------------------------
-# Safe write helper (shared across sheets)
+# Safe write helper
 # ------------------------------------------------------------
 def safe_write(ws, r, c, val, fmt, fmt_text):
     if val is None or (isinstance(val, float) and math.isnan(val)):
@@ -28,28 +27,41 @@ def safe_write(ws, r, c, val, fmt, fmt_text):
 
 
 # ------------------------------------------------------------
-# Create all formatting in one place
+# Formats
 # ------------------------------------------------------------
 def create_formats(workbook):
     return {
         "header": workbook.add_format({
-            'bold': True, 'font_color': 'white',
-            'bg_color': '#003366', 'border': 1
+            'bold': True,
+            'font_color': 'white',
+            'bg_color': '#003366',
+            'border': 1
         }),
         "zebra_light": workbook.add_format({'bg_color': '#F2F2F2'}),
         "zebra_white": workbook.add_format({'bg_color': 'white'}),
-        "bold": workbook.add_format({'bold': True}),
         "text": workbook.add_format({'align': 'left'}),
-        "dollar": workbook.add_format({'num_format': '$#,##0.00', 'align': 'right'}),
-        "percent": workbook.add_format({'num_format': '0.00%', 'align': 'right'}),
-        "date": workbook.add_format({'num_format': 'yyyy-mm-dd', 'align': 'left'}),
-        "number": workbook.add_format({'num_format': '#,##0.00', 'align': 'right'}),
+        "dollar": workbook.add_format({
+            'num_format': '$#,##0.00',
+            'align': 'right'
+        }),
+        "percent": workbook.add_format({
+            'num_format': '0.00%',
+            'align': 'right'
+        }),
+        "date": workbook.add_format({
+            'num_format': 'yyyy-mm-dd',
+            'align': 'left'
+        }),
+        "number": workbook.add_format({
+            'num_format': '#,##0.00',
+            'align': 'right'
+        }),
         "final_value": workbook.add_format({
             'num_format': '$#,##0.00',
             'bg_color': '#D9EAD3',
             'bold': True,
             'align': 'right'
-        })
+        }),
     }
 
 
@@ -60,32 +72,38 @@ def write_equity_sheet(writer, equity_df, formats, tickers):
 
     sheet_name = "Equity Curve"
     equity_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
     ws = writer.sheets[sheet_name]
     ws.freeze_panes(1, 1)
 
     header_fmt = formats["header"]
     fmt_text = formats["text"]
 
-    # Determine formatting groups
-    norm_cols = [c for c in equity_df.columns if c.endswith("_norm")]
-    price_cols = [c for c in equity_df.columns if c.endswith("_price") or c == "Value"]
+    price_cols = [
+        c for c in equity_df.columns
+        if c.endswith("_price") or c == "Value"
+    ]
     share_cols = [c for c in equity_df.columns if c.endswith("_shares")]
     value_cols = [c for c in equity_df.columns if c.endswith("_value")]
-    percent_cols = [c for c in equity_df.columns if "Pct" in c or "Return" in c or "Vol" in c]
+
+    percent_cols = [
+        c for c in equity_df.columns
+        if ("Pct" in c or "Return" in c or "Vol" in c
+            or "Drawdown" in c or "Market_DD" in c)
+    ]
 
     # Headers
     for col_num, col_name in enumerate(equity_df.columns):
         ws.write(0, col_num, col_name, header_fmt)
 
-    # Data rows
+    # Data
     for row in range(1, len(equity_df) + 1):
-        row_fmt = formats["zebra_light"] if row % 2 == 0 else formats["zebra_white"]
         current = equity_df.iloc[row - 1]
 
         for col_num, col_name in enumerate(equity_df.columns):
             val = current[col_name]
 
-            # Format selector
+            # Determine format
             if col_name == "Date":
                 fmt = formats["date"]
             elif col_name in percent_cols:
@@ -100,15 +118,15 @@ def write_equity_sheet(writer, equity_df, formats, tickers):
             safe_write(ws, row, col_num, val, fmt, fmt_text)
 
     # Highlight final value
-    value_col = equity_df.columns.get_loc("Value")
+    val_col = equity_df.columns.get_loc("Value")
     final_val = equity_df.iloc[-1]["Value"]
-    safe_write(ws, len(equity_df), value_col, final_val, formats["final_value"], fmt_text)
+    safe_write(ws, len(equity_df), val_col, final_val, formats["final_value"], fmt_text)
 
     ws.set_column(0, len(equity_df.columns), 14)
 
 
 # ------------------------------------------------------------
-# CHART SHEET
+# CHART SHEET (EXACTLY AS ORIGINAL)
 # ------------------------------------------------------------
 def write_chart_sheet(workbook, equity_df):
 
@@ -117,20 +135,21 @@ def write_chart_sheet(workbook, equity_df):
 
     # Portfolio value line
     val_idx = equity_df.columns.get_loc("Value")
+
     chart.add_series({
         "name": "Portfolio Value",
         "categories": ["Equity Curve", 1, 0, len(equity_df), 0],
-        "values":     ["Equity Curve", 1, val_idx, len(equity_df), val_idx],
+        "values": ["Equity Curve", 1, val_idx, len(equity_df), val_idx],
         "line": {"color": "#003366", "width": 2},
     })
 
-    # Normalized lines
+    # Benchmark normalized lines (unchanged)
     for col in [c for c in equity_df.columns if c.endswith("_norm")]:
         idx = equity_df.columns.get_loc(col)
         chart.add_series({
             "name": col.replace("_norm", "") + " (Normalized)",
             "categories": ["Equity Curve", 1, 0, len(equity_df), 0],
-            "values":     ["Equity Curve", 1, idx, len(equity_df), idx],
+            "values": ["Equity Curve", 1, idx, len(equity_df), idx],
             "line": {"dash_type": "dash"},
         })
 
@@ -143,40 +162,57 @@ def write_chart_sheet(workbook, equity_df):
 
 
 # ------------------------------------------------------------
-# QUARTERLY SUMMARY SHEET
+# SUMMARY SHEET
 # ------------------------------------------------------------
-def write_quarterly_sheet(writer, quarterly_df, formats):
+def write_quarterly_sheet(writer, quarterly_df, formats, config):
+
     if quarterly_df is None or quarterly_df.empty:
         return
 
-    sheet_name = "Quarterly Summary"
+    freq = config.get("rebalance_frequency", "quarterly")
+
+    name_map = {
+        "daily": "Daily Summary",
+        "weekly": "Weekly Summary",
+        "monthly": "Monthly Summary",
+        "quarterly": "Quarterly Summary",
+        "semiannual": "Semiannual Summary",
+        "annual": "Annual Summary",
+    }
+    sheet_name = name_map.get(freq, "Summary")
+
     quarterly_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
     ws = writer.sheets[sheet_name]
     ws.freeze_panes(1, 1)
 
+    header_fmt = formats["header"]
     fmt_text = formats["text"]
 
-    # Headers
-    for col_num, col_name in enumerate(quarterly_df.columns):
-        ws.write(0, col_num, col_name, formats["header"])
+    percent_cols = [
+        c for c in quarterly_df.columns
+        if ("Return" in c or "Vol" in c or "Drawdown" in c or "Market_DD" in c)
+    ]
 
-    # Rows
-    for row in range(1, len(quarterly_df) + 1):
-        current = quarterly_df.iloc[row - 1]
+    for c, name in enumerate(quarterly_df.columns):
+        ws.write(0, c, name, header_fmt)
 
-        for col_num, col_name in enumerate(quarterly_df.columns):
-            val = current[col_name]
+    for r in range(1, len(quarterly_df) + 1):
+        current = quarterly_df.iloc[r - 1]
 
-            if "Date" in col_name:
+        for c, name in enumerate(quarterly_df.columns):
+            val = current[name]
+
+            if name == "Date":
                 fmt = formats["date"]
-            elif "Return" in col_name or "Vol" in col_name:
+            elif name in percent_cols:
                 fmt = formats["percent"]
-            elif "Value" in col_name:
+            elif "Value" in name:
                 fmt = formats["dollar"]
             else:
                 fmt = fmt_text
 
-            safe_write(ws, row, col_num, val, fmt, fmt_text)
+            safe_write(ws, r, c, val, fmt, fmt_text)
 
     ws.set_column(0, len(quarterly_df.columns), 18)
 
@@ -185,9 +221,11 @@ def write_quarterly_sheet(writer, quarterly_df, formats):
 # PARAMETERS SHEET
 # ------------------------------------------------------------
 def write_parameters_sheet(writer, config):
-    df = pd.DataFrame(
-        [{"Parameter": k, "Value": v} for k, v in config.items() if k != "regimes"]
-    )
+    df = pd.DataFrame([
+        {"Parameter": k, "Value": v}
+        for k, v in config.items()
+        if k != "regimes"
+    ])
     df.to_excel(writer, sheet_name="Parameters", index=False)
 
 
@@ -195,124 +233,112 @@ def write_parameters_sheet(writer, config):
 # REGIMES SHEET
 # ------------------------------------------------------------
 def write_regimes_sheet(writer, config, formats):
-    regime_rows = []
+
+    rows = []
     for regime, vals in config["regimes"].items():
         row = {"Regime": regime}
         row.update(vals)
-        regime_rows.append(row)
+        rows.append(row)
 
-    df = pd.DataFrame(regime_rows)
+    df = pd.DataFrame(rows)
     df.to_excel(writer, sheet_name="Regimes", index=False)
+
     ws = writer.sheets["Regimes"]
     ws.freeze_panes(1, 1)
 
     header_fmt = formats["header"]
-    percent_fmt = formats["percent"]
-    text_fmt = formats["text"]
 
-    # Write headers
-    for col_num, col_name in enumerate(df.columns):
-        ws.write(0, col_num, col_name, header_fmt)
+    for c, name in enumerate(df.columns):
+        ws.write(0, c, name, header_fmt)
 
-    # Write rows w/ formatting
     for r in range(1, len(df) + 1):
         row = df.iloc[r - 1]
-        for c, col_name in enumerate(df.columns):
-            val = row[col_name]
-
-            if col_name == "Regime":
-                fmt = text_fmt
-            else:
-                fmt = percent_fmt  # ALL regime fields are %
-
-            safe_write(ws, r, c, val, fmt, text_fmt)
+        for c, name in enumerate(df.columns):
+            val = row[name]
+            fmt = formats["text"] if name == "Regime" else formats["percent"]
+            safe_write(ws, r, c, val, fmt, formats["text"])
 
     ws.set_column(0, len(df.columns), 14)
+
 
 # ------------------------------------------------------------
 # FINAL RESULTS SHEET
 # ------------------------------------------------------------
 def write_results_sheet(writer, equity_df, formats):
+
     last = equity_df.tail(1).copy()
 
-    # --- Calculate YoY growth (CAGR)
     start_val = equity_df["Value"].iloc[0]
     end_val = equity_df["Value"].iloc[-1]
+
     years = (equity_df["Date"].iloc[-1] - equity_df["Date"].iloc[0]).days / 365.25
+    cagr = (end_val / start_val) ** (1 / years) - 1 if years > 0 else 0
 
-    if years > 0:
-        cagr = (end_val / start_val) ** (1 / years) - 1
-    else:
-        cagr = 0
-
-    # Add CAGR to the results row
     last.insert(len(last.columns), "Avg_YoY_Growth", cagr)
 
-    # Create sheet
     sheet_name = "Results"
     last.to_excel(writer, sheet_name=sheet_name, index=False)
+
     ws = writer.sheets[sheet_name]
 
-    fmt_text = formats["text"]
     header_fmt = formats["header"]
+    fmt_text = formats["text"]
 
-    # Header row
-    for col_num, col_name in enumerate(last.columns):
-        ws.write(0, col_num, col_name, header_fmt)
+    for c, name in enumerate(last.columns):
+        ws.write(0, c, name, header_fmt)
 
-    # Format correct column types
-    for col_num, col_name in enumerate(last.columns):
-        val = last.iloc[0][col_name]
+    for c, name in enumerate(last.columns):
+        val = last.iloc[0][name]
 
-        if col_name == "Date":
+        if name == "Date":
             fmt = formats["date"]
-        elif col_name == "Value" or "_price" in col_name or "_value" in col_name:
+        elif ("Value" in name or "_price" in name or "_value" in name):
             fmt = formats["dollar"]
-        elif "Pct" in col_name or "Growth" in col_name or "YoY" in col_name:
+        elif ("Pct" in name or "Growth" in name or "YoY" in name
+              or "Drawdown" in name or "Market_DD" in name):
             fmt = formats["percent"]
-        elif "_norm" in col_name:
+        elif "_norm" in name:
             fmt = formats["dollar"]
-        elif "_shares" in col_name:
+        elif "_shares" in name:
             fmt = formats["number"]
         else:
             fmt = fmt_text
 
-        safe_write(ws, 1, col_num, val, fmt, fmt_text)
+        safe_write(ws, 1, c, val, fmt, fmt_text)
 
-    ws.set_column(0, len(last.columns), 16)
-
-    # Highlight final portfolio value cell
     val_idx = last.columns.get_loc("Value")
     safe_write(ws, 1, val_idx, last.iloc[0]["Value"], formats["final_value"], fmt_text)
 
+    ws.set_column(0, len(last.columns), 16)
 
 
-# ======================================================================
-# MAIN EXPORT FUNCTION — CLEAN, SIMPLE, MODULAR
-# ======================================================================
+# ------------------------------------------------------------
+# MAIN EXPORT FUNCTION
+# ------------------------------------------------------------
 def export_to_excel(equity_df, quarterly_df, config, mode="normal"):
-    # Pick different base name depending on mode
-    if mode == "worst_case":
-        filename = get_unique_filename(base="worst_case_results")
-    else:
-        filename = get_unique_filename(base="backtest_results")
+
+    filename = (
+        get_unique_filename(base="worst_case_results")
+        if mode == "worst_case"
+        else get_unique_filename(base="backtest_results")
+    )
 
     print(f"Exporting to: {filename}")
 
     writer = pd.ExcelWriter(
         filename,
         engine="xlsxwriter",
-        engine_kwargs={"options": {"nan_inf_to_errors": True}}
+        engine_kwargs={"options": {"nan_inf_to_errors": True}},
     )
     workbook = writer.book
 
     formats = create_formats(workbook)
 
     write_equity_sheet(writer, equity_df, formats, config["tickers"])
-    write_chart_sheet(workbook, equity_df)
-    write_quarterly_sheet(writer, quarterly_df, formats)
+    write_chart_sheet(workbook, equity_df)   # ← Chart restored EXACTLY as before
+    write_quarterly_sheet(writer, quarterly_df, formats, config)
     write_parameters_sheet(writer, config)
-    write_regimes_sheet(writer, config, formats)  # <-- FIXED
+    write_regimes_sheet(writer, config, formats)
     write_results_sheet(writer, equity_df, formats)
 
     writer.close()
