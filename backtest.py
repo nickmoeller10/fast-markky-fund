@@ -193,7 +193,10 @@ def run_backtest(price_data, config, regime_fn, regime_detector, rebalance_fn):
     # PRICE DATA SETUP
     # ============================================================
     price_df = price_data[tickers].copy()
-    start_date = price_df.dropna().index.min()
+    # start_date = price_df.dropna().index.min()
+    # NEW: find first date where at least 1 ticker has real OR simulated data
+    start_date = price_df.index[price_df.notna().any(axis=1)][0]
+
     log(f"[NORMALIZATION] First valid date: {start_date.date()}")
 
     # ------------------------------------------------------------

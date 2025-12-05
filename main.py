@@ -8,6 +8,8 @@ from allocation_engine import get_allocation_for_regime
 from rebalance_engine import rebalance_portfolio
 from backtest import run_backtest
 from exporter import export_to_excel
+from worst_case_runner import run_worst_case_simulation
+import config
 
 
 def run():
@@ -39,7 +41,12 @@ def run():
     print("Final portfolio value:", equity_df["Value"].iloc[-1])
 
     print("\nSuggested current allocation based on regime:")
-    latest_dd, _ = compute_drawdown_from_ath(price_data["QQQ"])
+    drawdown_ticker = config.CONFIG.get("drawdown_ticker")
+
+    if drawdown_ticker is None or drawdown_ticker not in price_data.columns:
+        raise ValueError(f"drawdown-ticker '{drawdown_ticker}' not found in price data.")
+
+    latest_dd, _ = compute_drawdown_from_ath(price_data[drawdown_ticker])
     regime = determine_regime(latest_dd.iloc[-1], CONFIG)
     print(get_allocation_for_regime(regime, CONFIG))
 
@@ -48,8 +55,32 @@ def run():
         export_to_excel(equity_df, quarterly_df, CONFIG)
         print("Excel export complete!\n")
 
+    # ----------------------------------------
+    # OPTIONAL: RUN WORST-CASE SIMULATION
+    # ----------------------------------------
+    print("\nRun worst-case historical simulation? (Y/N): ", end="")
+    run_worst = input().strip().upper()
+
+    if run_worst == "Y":
+        print("\nRunning worst-case simulator...\n")
+
+        w_equity_df, w_quarterly_df = run_worst_case_simulation()
+
+        print("Worst-case simulation complete!")
+        print("Final simulated portfolio value:", w_equity_df['Value'].iloc[-1])
+
+        print("\nExporting worst-case results...\n")
+        export_to_excel(
+            w_equity_df,
+            w_quarterly_df,
+            CONFIG,
+            is_worst_case=True
+        )
+        print("Worst-case Excel export complete!\n")
+
     if confirm_exit():
         print("Thank you for using the Tactical Portfolio Engine!")
+
 
 
 if __name__ == "__main__":

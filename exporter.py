@@ -290,9 +290,13 @@ def write_results_sheet(writer, equity_df, formats):
 # ======================================================================
 # MAIN EXPORT FUNCTION — CLEAN, SIMPLE, MODULAR
 # ======================================================================
-def export_to_excel(equity_df, quarterly_df, config):
+def export_to_excel(equity_df, quarterly_df, config, mode="normal"):
+    # Pick different base name depending on mode
+    if mode == "worst_case":
+        filename = get_unique_filename(base="worst_case_results")
+    else:
+        filename = get_unique_filename(base="backtest_results")
 
-    filename = get_unique_filename()
     print(f"Exporting to: {filename}")
 
     writer = pd.ExcelWriter(
