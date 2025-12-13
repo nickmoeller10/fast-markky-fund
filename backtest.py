@@ -159,6 +159,10 @@ apply_asymmetric_rules = apply_asymmetric_rules_down_only
 def record_missing_row(equity_rows, date, tickers, row_prices, row_norm,
                        shares, portfolio_value, prev_regime, starting_val, dd_cols):
 
+    # Handle None shares (safety check)
+    if shares is None:
+        shares = {}
+
     rec = {
         "Date": date,
         "Value": portfolio_value,
@@ -170,16 +174,39 @@ def record_missing_row(equity_rows, date, tickers, row_prices, row_norm,
     }
 
     for t in tickers:
-        rec[f"{t}_price"] = row_prices.get(t)
-        rec[f"{t}_norm"] = row_norm.get(f"{t}_norm")
-        rec[f"{t}_shares"] = shares.get(t, 0)
-        rec[f"{t}_value"] = shares.get(t, 0) * row_prices.get(t, 0)
+        # Handle both dict and Series/DataFrame access
+        if isinstance(row_prices, dict):
+            price_val = row_prices.get(t, 0)
+        else:
+            price_val = row_prices.get(t, 0) if hasattr(row_prices, 'get') else (row_prices[t] if t in row_prices.index else 0)
+        
+        if isinstance(row_norm, dict):
+            norm_val = row_norm.get(f"{t}_norm", 0)
+        else:
+            norm_val = row_norm.get(f"{t}_norm", 0) if hasattr(row_norm, 'get') else (row_norm[f"{t}_norm"] if f"{t}_norm" in row_norm.index else 0)
+        
+        shares_val = shares.get(t, 0) if isinstance(shares, dict) else 0
+        
+        rec[f"{t}_price"] = price_val
+        rec[f"{t}_norm"] = norm_val
+        rec[f"{t}_shares"] = shares_val
+        rec[f"{t}_value"] = shares_val * (price_val if price_val else 0)
 
     equity_rows.append(rec)
 
 
 def update_portfolio_value(shares, row_prices, prev_value, quarter_returns):
-    new_value = sum(shares[t] * row_prices[t] for t in shares)
+    # Handle None shares
+    if shares is None:
+        shares = {}
+    
+    # Calculate portfolio value
+    new_value = 0.0
+    for t in shares:
+        if t in row_prices:
+            price = row_prices[t] if isinstance(row_prices, dict) else (row_prices.loc[t] if t in row_prices.index else 0)
+            new_value += shares[t] * price
+    
     daily_ret = (new_value / prev_value - 1) if prev_value != 0 else 0
     quarter_returns.append(daily_ret)
     return new_value, new_value
@@ -189,6 +216,12 @@ def record_daily_row(equity_rows, date, tickers, row_prices, row_norm,
                      shares, portfolio_value, market_regime,
                      portfolio_regime, starting_val, rebalanced_flag,
                      dd_cols, cash_balance=0.0):
+    from utils import log
+    
+    # Handle None shares
+    if shares is None:
+        log(f"⚠️ WARNING: shares is None in record_daily_row on {date}. Initializing as empty dict.")
+        shares = {}
 
     # Include cash in total value
     total_value = portfolio_value + cash_balance
@@ -207,8 +240,8 @@ def record_daily_row(equity_rows, date, tickers, row_prices, row_norm,
     for t in tickers:
         rec[f"{t}_price"] = row_prices[t]
         rec[f"{t}_norm"] = row_norm[f"{t}_norm"]
-        rec[f"{t}_shares"] = float(shares.get(t, 0))
-        rec[f"{t}_value"] = float(shares.get(t, 0) * row_prices[t])
+        rec[f"{t}_shares"] = float(shares.get(t, 0) if isinstance(shares, dict) else 0)
+        rec[f"{t}_value"] = float((shares.get(t, 0) if isinstance(shares, dict) else 0) * row_prices[t])
 
     equity_rows.append(rec)
 
@@ -216,6 +249,12 @@ def record_daily_row(equity_rows, date, tickers, row_prices, row_norm,
 def record_quarterly_row(quarterly_rows, date, tickers, row_prices, shares,
                          portfolio_value, market_regime, portfolio_regime,
                          last_rebalance_value, quarter_returns, dd_cols):
+    from utils import log
+    
+    # Handle None shares
+    if shares is None:
+        log(f"⚠️ WARNING: shares is None in record_quarterly_row on {date}. Initializing as empty dict.")
+        shares = {}
 
     qoq_ret = (portfolio_value / last_rebalance_value) - 1
     qoq_vol = pd.Series(quarter_returns).std() if len(quarter_returns) else 0
@@ -274,6 +313,14 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
     market_regime, portfolio_regime, shares = get_initial_allocation(
         start_date, price_df, first_dd, config, regime_detector, rebalance_fn
     )
+    
+    # Ensure shares is initialized (should never be None, but handle edge cases)
+    if shares is None:
+        log(f"⚠️ ERROR: get_initial_allocation returned None for shares on {start_date}. Initializing as empty dict.")
+        shares = {}
+    elif not isinstance(shares, dict):
+        log(f"⚠️ WARNING: shares is not a dict on {start_date} (type: {type(shares)}). Converting to dict.")
+        shares = {} if shares is None else dict(shares) if hasattr(shares, 'items') else {}
 
     portfolio_value = starting_val
     prev_value = starting_val
@@ -321,10 +368,15 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         # Dividend handling
         # -------------------------
         if dividend_reinvestment and dividend_data is not None and not dividend_data.empty:
+            # Ensure shares is a dict
+            if shares is None:
+                log(f"⚠️ WARNING: shares is None during dividend handling on {date}. Initializing as empty dict.")
+                shares = {}
+            
             daily_dividends = 0.0
             for ticker in allocation_tickers:
                 # Check if ticker exists in dividend_data columns and we have shares
-                if ticker in dividend_data.columns and ticker in shares and shares.get(ticker, 0) > 0:
+                if ticker in dividend_data.columns and isinstance(shares, dict) and ticker in shares and shares.get(ticker, 0) > 0:
                     # Get dividend for this date
                     if date in dividend_data.index:
                         dividend_per_share = dividend_data.loc[date, ticker]

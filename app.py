@@ -18,6 +18,7 @@ from allocation_engine import get_allocation_for_regime
 from rebalance_engine import rebalance_portfolio
 from backtest import run_backtest
 from dashboard import render_dashboard
+from utils import log
 
 # ======================================================================
 # PAGE CONFIGURATION
@@ -71,9 +72,6 @@ if 'config' not in st.session_state:
             },
         },
         "use_worst_case_simulation": False,
-        "benchmark_ticker": "QQQ",
-        "worst_case_start_date": "1950-01-01",
-        "worst_case_output_dir": "simulation_outputs",
     }
 
 if 'backtest_results' not in st.session_state:
@@ -108,12 +106,16 @@ def render_configuration_page():
             )
         
         with col2:
+            # Set very wide date range to allow any reasonable date
+            min_date = date(1900, 1, 1)
+            max_date = date(2100, 12, 31)
+            
             start_date_input = st.date_input(
                 "Start Date",
                 value=pd.to_datetime(config["start_date"]).date() if isinstance(config["start_date"], str) else config["start_date"],
                 help="Backtest start date",
-                min_value=None,  # Remove minimum restriction
-                max_value=None   # Remove maximum restriction
+                min_value=min_date,
+                max_value=max_date
             )
             config["start_date"] = start_date_input.strftime("%Y-%m-%d")
         
@@ -127,17 +129,103 @@ def render_configuration_page():
                         end_date_val = date.today()
                 else:
                     end_date_val = date.today()
+                
+                # Set very wide date range, but ensure end date is after start date
+                min_date = date(1900, 1, 1)
+                max_date = date(2100, 12, 31)
+                
+                # Ensure end date is at least the start date
+                try:
+                    start_date_val = pd.to_datetime(config["start_date"]).date() if isinstance(config["start_date"], str) else config["start_date"]
+                    if isinstance(start_date_val, str):
+                        start_date_val = pd.to_datetime(start_date_val).date()
+                    if end_date_val < start_date_val:
+                        end_date_val = start_date_val
+                except:
+                    pass
+                
                 end_date_input = st.date_input(
                     "End Date",
                     value=end_date_val,
-                    help="Backtest end date (leave unchecked for current date)",
+                    help="Backtest end date (leave unchecked for current date). Must be after start date.",
                     key="end_date_input",
-                    min_value=None,  # Remove minimum restriction
-                    max_value=None   # Remove maximum restriction
+                    min_value=min_date,
+                    max_value=max_date
                 )
-                config["end_date"] = end_date_input.strftime("%Y-%m-%d")
+                
+                # Validate that end date is after start date
+                try:
+                    start_date_val = pd.to_datetime(config["start_date"]).date() if isinstance(config["start_date"], str) else config["start_date"]
+                    if isinstance(start_date_val, str):
+                        start_date_val = pd.to_datetime(start_date_val).date()
+                    if end_date_input < start_date_val:
+                        st.error(f"⚠️ End date must be after start date ({start_date_val}).")
+                        config["end_date"] = None
+                    else:
+                        config["end_date"] = end_date_input.strftime("%Y-%m-%d")
+                except Exception as e:
+                    config["end_date"] = end_date_input.strftime("%Y-%m-%d")
             else:
                 config["end_date"] = None
+    
+    # Simulated Scenario (pre QQQ)
+    with st.expander("🔮 Simulated Scenario (pre QQQ)", expanded=False):
+        use_worst_case = st.checkbox(
+            "Enable Simulated Scenario (pre QQQ)",
+            value=config.get("use_worst_case_simulation", False),
+            help="Use simulated QQQ and TQQQ data based on NASDAQ Composite (^IXIC) dating back to 1985. Your start/end dates will be respected."
+        )
+        config["use_worst_case_simulation"] = use_worst_case
+        
+        if use_worst_case:
+            # Check earliest dates for OTHER tickers (excluding QQQ/TQQQ) for informational purposes
+            from worst_case_simulator import get_earliest_date
+            allocation_tickers = config.get("allocation_tickers", config["tickers"])
+            all_tickers = list(set(allocation_tickers + config.get("tickers", [])))
+            
+            # Exclude QQQ and TQQQ from earliest date check (they're simulated from 1985)
+            other_tickers = [t for t in all_tickers if t not in ["QQQ", "TQQQ"]]
+            
+            # Get earliest dates for OTHER tickers only (for info display)
+            ticker_earliest_dates = {}
+            for ticker in other_tickers:
+                earliest_date = get_earliest_date(ticker, start_date="1980-01-01")
+                if earliest_date:
+                    ticker_earliest_dates[ticker] = earliest_date
+            
+            st.info(f"""
+            **What this does:**
+            - **QQQ** is entirely simulated from NASDAQ Composite (^IXIC) dating back to 1985-02-01
+            - **TQQQ** is simulated as 3x leveraged QQQ (also from 1985-02-01)
+            - **Your start and end dates will be respected** - the simulation uses your specified date range
+            - QQQ and TQQQ are NOT limited by their real inception dates (1999/2010) - they use NASDAQ Composite simulation
+            - Other tickers (like XLU) will use real data from their inception dates
+            """)
+            
+            st.markdown("**📅 Fund Availability Dates:**")
+            earliest_info = []
+            
+            # Show QQQ and TQQQ (always simulated from 1985)
+            earliest_info.append("• **QQQ**: Simulated from 1985-02-01 (based entirely on NASDAQ Composite ^IXIC)")
+            earliest_info.append("• **TQQQ**: Simulated from 1985-02-01 (3x leveraged QQQ)")
+            
+            # Check other tickers
+            for ticker in other_tickers:
+                earliest_date = get_earliest_date(ticker)
+                if earliest_date:
+                    earliest_info.append(f"• **{ticker}**: Earliest date is {earliest_date.strftime('%Y-%m-%d')}")
+                else:
+                    earliest_info.append(f"• **{ticker}**: Could not determine earliest date")
+            
+            for info in earliest_info:
+                st.caption(info)
+            
+            # Show information about date limitations
+            if ticker_earliest_dates:
+                earliest_other = max(ticker_earliest_dates.values())
+                st.info(f"ℹ️ **Note**: Other tickers (like XLU) have real data starting from **{earliest_other.strftime('%Y-%m-%d')}**. If your start date is before this, those tickers won't have data until their inception dates. QQQ and TQQQ are simulated from 1985, so they'll have data for your entire date range.")
+            else:
+                st.success(f"✅ **Note**: No other tickers in your portfolio. QQQ and TQQQ are simulated from 1985, so you can use any date range starting from 1985-02-01.")
     
     # Rebalancing Settings
     with st.expander("🔄 Rebalancing Settings", expanded=True):
@@ -431,28 +519,57 @@ def run_backtest_from_ui():
     status_text = st.empty()
     
     try:
-        # Step 1: Load data
-        status_text.text("📥 Loading price data from Yahoo Finance...")
-        progress_bar.progress(10)
+        # Step 1: Load data (or generate worst-case simulation)
+        use_worst_case = config.get("use_worst_case_simulation", False)
         
-        # Check if dividend reinvestment is enabled
-        dividend_reinvestment = config.get("dividend_reinvestment", False)
-        
-        if dividend_reinvestment:
-            price_data, dividend_data = load_price_data(
+        if use_worst_case:
+            status_text.text("🔮 Generating simulated scenario from NASDAQ Composite...")
+            progress_bar.progress(10)
+            
+            from worst_case_simulator import generate_worst_case_prices
+            
+            # Generate simulated prices using user's start/end dates
+            price_data, earliest_dates = generate_worst_case_prices(
+                config, 
                 config["tickers"],
-                config["start_date"],
-                config.get("end_date"),
-                include_dividends=True
+                start_date=config.get("start_date"),
+                end_date=config.get("end_date")
             )
-        else:
-            price_data = load_price_data(
-                config["tickers"],
-                config["start_date"],
-                config.get("end_date"),
-                include_dividends=False
-            )
+            
+            # Update config with actual dates used (may be adjusted if user's dates are invalid)
+            config["start_date"] = price_data.index.min().strftime("%Y-%m-%d")
+            config["end_date"] = price_data.index.max().strftime("%Y-%m-%d")
+            
+            log(f"[APP] Simulated scenario: {config['start_date']} to {config['end_date']}")
+            
+            # For worst-case, we don't support dividends (simulated data)
             dividend_data = None
+            dividend_reinvestment = False
+            config["dividend_reinvestment"] = False
+            
+            progress_bar.progress(30)
+        else:
+            status_text.text("📥 Loading price data from Yahoo Finance...")
+            progress_bar.progress(10)
+            
+            # Check if dividend reinvestment is enabled
+            dividend_reinvestment = config.get("dividend_reinvestment", False)
+            
+            if dividend_reinvestment:
+                price_data, dividend_data = load_price_data(
+                    config["tickers"],
+                    config["start_date"],
+                    config.get("end_date"),
+                    include_dividends=True
+                )
+            else:
+                price_data = load_price_data(
+                    config["tickers"],
+                    config["start_date"],
+                    config.get("end_date"),
+                    include_dividends=False
+                )
+                dividend_data = None
         
         progress_bar.progress(30)
         
