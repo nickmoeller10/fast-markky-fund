@@ -60,6 +60,45 @@ def run():
         print("Excel export complete!\n")
 
     # ----------------------------------------
+    # OPTIONAL: VIEW INTERACTIVE DASHBOARD
+    # ----------------------------------------
+    if confirm_dashboard():
+        print("\nPreparing dashboard data...\n")
+        
+        # Save data for dashboard
+        import pickle
+        data_file = "dashboard_data.pkl"
+        with open(data_file, 'wb') as f:
+            pickle.dump({
+                'equity_df': equity_df,
+                'quarterly_df': quarterly_df,
+                'config': CONFIG
+            }, f)
+        
+        print(f"Data saved to {data_file}")
+        print("\nTo view the dashboard, run:")
+        print("  streamlit run dashboard_runner.py")
+        print("\nOr launch it now? (Y/N): ", end="")
+        launch_now = input().strip().upper()
+        
+        if launch_now == "Y":
+            import subprocess
+            import sys
+            import os
+            
+            print("\nLaunching dashboard in your browser...")
+            print("Press Ctrl+C in this terminal to stop the dashboard server.\n")
+            
+            try:
+                subprocess.run([sys.executable, "-m", "streamlit", "run", "dashboard_runner.py"])
+            except KeyboardInterrupt:
+                print("\nDashboard server stopped.")
+            finally:
+                # Cleanup
+                if os.path.exists(data_file):
+                    os.remove(data_file)
+
+    # ----------------------------------------
     # OPTIONAL: RUN WORST-CASE SIMULATION
     # ----------------------------------------
     print("\nRun worst-case historical simulation? (Y/N): ", end="")

@@ -18,5 +18,8 @@ def confirm_backtest():
 def confirm_export():
     return input("Export results to Excel? (Y/N): ").strip().upper() == "Y"
 
+def confirm_dashboard():
+    return input("View interactive dashboard? (Y/N): ").strip().upper() == "Y"
+
 def confirm_exit():
     return input("Exit program? (Y/N): ").strip().upper() == "Y"
