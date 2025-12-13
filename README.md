@@ -45,21 +45,33 @@ pip install -r requirements.txt
 
 ### Basic Usage
 
-1. Configure your parameters in `config.py`:
-   - Set `start_date` and optional `end_date`
-   - Adjust regime thresholds and allocations
-   - Choose rebalance frequency
+**New UI-Driven Approach (Recommended):**
 
-2. Run the backtest:
+1. Launch the Streamlit application:
+```bash
+streamlit run app.py
+```
+
+2. The app will open in your browser automatically
+
+3. Configure your parameters in the **Configuration** page:
+   - Set starting balance, start/end dates
+   - Choose rebalance frequency
+   - Configure tickers and regimes
+   - Adjust allocation percentages
+
+4. Click **🚀 Run Backtest** to execute
+
+5. View results in the **Results** page with interactive charts
+
+6. Modify parameters and re-run anytime without restarting
+
+**Legacy Console Mode (Optional):**
+
+If you prefer the console interface:
 ```bash
 python main.py
 ```
-
-3. Follow the interactive prompts:
-   - Review configuration
-   - Run backtest
-   - Export to Excel (optional)
-   - View interactive dashboard (recommended)
 
 ## 📈 Features
 

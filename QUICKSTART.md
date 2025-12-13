@@ -13,19 +13,38 @@ Or install individually:
 pip install pandas numpy yfinance streamlit plotly xlsxwriter openpyxl
 ```
 
-## Step 2: Configure (Optional)
+## Step 2: Launch the Application
 
-Edit `config.py` if you want to customize:
-- Start/end dates
-- Starting balance
-- Regime thresholds
-- Rebalance frequency
+Run the Streamlit app:
+
+```bash
+streamlit run app.py
+```
+
+The app will automatically open in your web browser.
+
+## Step 3: Configure Parameters
+
+In the **Configuration** page:
+- Set starting balance, dates, and rebalance frequency
+- Configure tickers and regimes
+- Adjust allocation percentages
 
 **Default settings work fine for a first run!**
 
-## Step 3: Run the Program
+## Step 4: Run Backtest
 
-Simply execute:
+Click the **🚀 Run Backtest** button to execute.
+
+## Step 5: View Results
+
+Results automatically appear in the **Results** page with interactive charts.
+
+---
+
+## Alternative: Console Mode (Legacy)
+
+If you prefer the console interface:
 
 ```bash
 python main.py

@@ -20,12 +20,17 @@ from exporter import export_to_excel
 # ======================================================================
 # PAGE CONFIGURATION
 # ======================================================================
-st.set_page_config(
-    page_title="Fast Markky Fund - Backtest Dashboard",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Note: Page config should be set in the main app (app.py)
+# This is only set if dashboard is run standalone
+try:
+    st.set_page_config(
+        page_title="Fast Markky Fund - Backtest Dashboard",
+        page_icon="📈",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+except:
+    pass  # Page config already set by parent app
 
 
 # ======================================================================
@@ -347,54 +352,84 @@ def render_dashboard(equity_df, quarterly_df, config):
     # Calculate metrics
     metrics = calculate_metrics(equity_df, config)
     
-    # Key Metrics Row
+    # Key Performance Metrics - Enhanced Display
     st.header("📊 Key Performance Metrics")
-    col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
     
-    with col1:
+    # Primary metrics (larger, more prominent)
+    st.subheader("💰 Portfolio Performance")
+    primary_col1, primary_col2, primary_col3 = st.columns(3)
+    
+    with primary_col1:
+        final_value_delta = metrics['end_value'] - metrics['start_value']
         st.metric(
-            "Final Value",
+            "Final Portfolio Value",
             f"${metrics['end_value']:,.2f}",
-            f"${metrics['end_value'] - metrics['start_value']:,.2f}"
+            f"${final_value_delta:,.2f}",
+            delta_color="normal"
         )
+        st.caption(f"Starting: ${metrics['start_value']:,.2f}")
     
-    with col2:
+    with primary_col2:
         st.metric(
             "Total Return",
             f"{metrics['total_return']:.2%}",
+            None,
+            delta_color="normal"
         )
+        st.caption(f"Absolute gain: ${final_value_delta:,.2f}")
     
-    with col3:
+    with primary_col3:
         st.metric(
             "CAGR",
             f"{metrics['cagr']:.2%}",
+            None,
+            delta_color="normal"
         )
+        st.caption(f"Over {metrics['years']:.1f} years")
     
-    with col4:
+    st.markdown("---")
+    
+    # Secondary metrics (risk and ratios)
+    st.subheader("📈 Risk & Performance Ratios")
+    secondary_col1, secondary_col2, secondary_col3, secondary_col4 = st.columns(4)
+    
+    with secondary_col1:
         st.metric(
             "Max Drawdown",
             f"{metrics['max_drawdown']:.2%}",
+            None,
+            delta_color="inverse"
         )
+        st.caption("Worst peak-to-trough")
     
-    with col5:
+    with secondary_col2:
         st.metric(
             "Sharpe Ratio",
             f"{metrics['sharpe_ratio']:.2f}",
+            None,
+            delta_color="normal"
         )
+        st.caption("Risk-adjusted return")
     
-    with col6:
+    with secondary_col3:
         sortino_display = "∞" if metrics['sortino_ratio'] == float('inf') else f"{metrics['sortino_ratio']:.2f}"
         st.metric(
             "Sortino Ratio",
             sortino_display,
+            None,
+            delta_color="normal"
         )
+        st.caption("Downside risk-adjusted")
     
-    with col7:
+    with secondary_col4:
         beta_label = f"Beta vs {metrics['beta_benchmark']}" if metrics['beta_benchmark'] != "N/A" else "Beta"
         st.metric(
             beta_label,
             f"{metrics['beta']:.2f}",
+            None,
+            delta_color="normal"
         )
+        st.caption("Market sensitivity")
     
     st.markdown("---")
     
@@ -690,15 +725,16 @@ def render_dashboard(equity_df, quarterly_df, config):
 
 
 # ======================================================================
-# STANDALONE MODE
+# STANDALONE MODE (for backward compatibility)
 # ======================================================================
 if __name__ == "__main__":
-    st.error("""
-    This dashboard is designed to be called from the main application.
+    st.info("""
+    This dashboard is now integrated into the main app.
     
-    To use the dashboard:
-    1. Run your backtest as normal
-    2. Select 'View Dashboard' when prompted
-    3. Or call render_dashboard(equity_df, quarterly_df, config) from your code
+    To use:
+    1. Run: `streamlit run app.py`
+    2. Configure parameters in the Configuration page
+    3. Click "Run Backtest"
+    4. View results in the Results page
     """)
 
