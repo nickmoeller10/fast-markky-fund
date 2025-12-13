@@ -19,6 +19,9 @@ CONFIG = {
     # "start_date": "2021-11-18",   # Worst-case 2021
     "start_date": "2010-12-02",     # Near TQQQ start
 
+    # "end_date": None,              # Explicitly use current date (default behavior)
+    "end_date": "2021-12-31",   
+
     "drawdown_ticker": "QQQ", # The Ticker we want to measure drawdown from
 
     # =============================================================

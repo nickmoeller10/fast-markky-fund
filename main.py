@@ -26,7 +26,11 @@ def run():
         return
 
     print("\nLoading price data...\n")
-    price_data = load_price_data(CONFIG["tickers"], CONFIG["start_date"])
+    price_data = load_price_data(
+        CONFIG["tickers"], 
+        CONFIG["start_date"],
+        CONFIG.get("end_date")  # Gets end_date if set, otherwise None (defaults to current)
+    )
 
     print("Running backtest...\n")
     equity_df, quarterly_df = run_backtest(
