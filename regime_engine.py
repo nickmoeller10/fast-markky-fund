@@ -12,12 +12,35 @@ def compute_drawdown_from_ath(series):
 
 def determine_regime(dd_value, config, date=None):
 
-    # Handle NaN drawdowns explicitly
-    if dd_value is None or (isinstance(dd_value, float) and math.isnan(dd_value)):
+    # Handle NaN drawdowns explicitly (check before conversion)
+    if dd_value is None:
         if date:
-            log(f"!! Drawdown is NaN on {date} — cannot determine regime.")
+            log(f"!! Drawdown is None on {date} — cannot determine regime.")
         else:
-            log("!! Drawdown is NaN — cannot determine regime.")
+            log("!! Drawdown is None — cannot determine regime.")
+        return None
+    
+    # Check for NaN (works with both numpy and Python types)
+    try:
+        if math.isnan(dd_value):
+            if date:
+                log(f"!! Drawdown is NaN on {date} — cannot determine regime.")
+            else:
+                log("!! Drawdown is NaN — cannot determine regime.")
+            return None
+    except (TypeError, ValueError):
+        pass  # Not a numeric type that can be NaN
+    
+    # Convert to Python float if it's a numpy type to avoid formatting issues
+    try:
+        if hasattr(dd_value, 'item'):
+            dd_value = dd_value.item()
+        dd_value = float(dd_value)
+    except (ValueError, TypeError):
+        if date:
+            log(f"!! Drawdown is not a valid number on {date}: {dd_value}")
+        else:
+            log(f"!! Drawdown is not a valid number: {dd_value}")
         return None
 
     # Extract regimes in fixed order

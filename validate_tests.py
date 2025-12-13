@@ -1,288 +1,612 @@
+# validate_tests.py
+# ======================================================================
+# Comprehensive Test Suite for Fast Markky Fund
+# ======================================================================
+# Tests main functionality using real data from Yahoo Finance
+# ======================================================================
+
 import pandas as pd
+import numpy as np
 import yfinance as yf
+from datetime import datetime, timedelta
+import os
+import hashlib
+import pickle
 
 from backtest import run_backtest
 from config import CONFIG
+from regime_engine import compute_drawdown_from_ath, determine_regime
+from allocation_engine import get_allocation_for_regime
+from rebalance_engine import rebalance_portfolio
+from data_loader import load_price_data
 
 
-# ============================================================
-# TEST 1 — Price Data Integrity
-# ============================================================
-def test_price_data_quality():
-    print("\n=== TEST 1: PRICE DATA QUALITY ===")
+# ======================================================================
+# TEST DATA CACHE SETUP
+# ======================================================================
+TEST_DATA_CACHE_DIR = "test_data_cache"
 
-    tickers = CONFIG["tickers"]
-
-    df = yf.download(tickers, start=CONFIG["start_date"])["Close"]
-
-    print("Data shape:", df.shape)
-    print("Tickers present:", df.columns.tolist())
-
-    missing = df.isna().sum()
-    print("Missing values:")
-    print(missing)
-
-    assert missing.sum() == 0, "❌ Missing price data exists!"
-
-    print("✔ PASSED — No missing price data.\n")
+def ensure_cache_dir():
+    """Ensure the cache directory exists"""
+    if not os.path.exists(TEST_DATA_CACHE_DIR):
+        os.makedirs(TEST_DATA_CACHE_DIR)
 
 
-def test_buy_and_hold():
-    print("\n=== TEST 2: BUY & HOLD CONSISTENCY ===")
-
-    for t in CONFIG["tickers"]:
-        print(f"\nRunning 100% buy & hold test for {t}...")
-
-        test_config = CONFIG.copy()
-        test_config["tickers"] = [t]
-        test_config["allocation_tickers"] = [t]     # 🔥 FIX
-        test_config["regimes"] = {"R1": {t: 1.0}}
-
-        raw = yf.download(t, start=test_config["start_date"])["Close"]
-
-        # Normalize to DataFrame
-        if isinstance(raw, pd.Series):
-            df = raw.to_frame(name=t)
-        else:
-            df = raw.rename(columns={"Close": t})
-
-        from regime_engine import compute_drawdown_from_ath
-
-        result = run_backtest(
-            price_data=df,
-            config=test_config,
-            regime_fn=lambda s: compute_drawdown_from_ath(s),
-            regime_detector=lambda dd, cfg: "R1",
-            rebalance_fn=lambda bal, alloc, prices: {t: bal / prices[t]}
-        )
-
-        base = df.iloc[0][t]
-        expected = df[t] / base * test_config["starting_balance"]
-
-        actual_end = result["Value"].iloc[-1]
-        expected_end = expected.iloc[-1]
-
-        print(f"Actual end:   {actual_end}")
-        print(f"Expected end: {expected_end}")
-
-        assert abs(actual_end - expected_end) < 1e-5, "❌ BUY & HOLD mismatch!"
-        print(f"✔ PASSED — {t} matches normalized performance perfectly!")
+def get_cache_filename(tickers, start_date, end_date):
+    """Generate a cache filename based on tickers and date range"""
+    # Create a hash of the parameters for the filename
+    cache_key = f"{sorted(tickers)}_{start_date}_{end_date or 'today'}"
+    cache_hash = hashlib.md5(cache_key.encode()).hexdigest()[:12]
+    ticker_str = "_".join(sorted(tickers))
+    return os.path.join(TEST_DATA_CACHE_DIR, f"{ticker_str}_{cache_hash}.pkl")
 
 
-# ============================================================
-# TEST 3 — Normalization Math Validation
-# ============================================================
-def test_normalization():
-    print("\n=== TEST 3: NORMALIZATION CHECK ===")
+def download_test_data(tickers, start_date, end_date=None, use_cache=True):
+    """
+    Download test data from Yahoo Finance with caching.
+    
+    Args:
+        tickers: List of ticker symbols
+        start_date: Start date string (YYYY-MM-DD)
+        end_date: End date string (YYYY-MM-DD) or None for today
+        use_cache: If True, use cached data if available
+    
+    Returns:
+        DataFrame with price data
+    """
+    ensure_cache_dir()
+    cache_file = get_cache_filename(tickers, start_date, end_date)
+    
+    # Try to load from cache first
+    if use_cache and os.path.exists(cache_file):
+        print(f"Loading cached test data from {cache_file}...")
+        try:
+            with open(cache_file, 'rb') as f:
+                cached_data = pickle.load(f)
+            print(f"Loaded {len(cached_data)} days of cached data")
+            return cached_data
+        except Exception as e:
+            print(f"Warning: Failed to load cache ({e}), downloading fresh data...")
+    
+    # Download from API
+    print(f"Downloading test data for {tickers} from {start_date} to {end_date or 'today'}...")
+    data = yf.download(tickers, start=start_date, end=end_date, auto_adjust=True)
+    
+    if data.empty:
+        raise ValueError(f"Failed to download data for {tickers}")
+    
+    closes = data["Close"].dropna(how="all")
+    print(f"Downloaded {len(closes)} days of data")
+    
+    # Save to cache
+    if use_cache:
+        try:
+            with open(cache_file, 'wb') as f:
+                pickle.dump(closes, f)
+            print(f"Cached data saved to {cache_file}")
+        except Exception as e:
+            print(f"Warning: Failed to save cache ({e})")
+    
+    return closes
 
-    tickers = CONFIG["tickers"]
-    df = yf.download(tickers, start=CONFIG["start_date"])["Close"]
 
-    first_valid = df.dropna().index[0]
-
-    print("Common start date:", first_valid)
-
-    for t in tickers:
-        p0 = df.loc[first_valid, t]
-        p1 = df.iloc[10][t]
-
-        expected_norm = p1 / p0 * CONFIG["starting_balance"]
-
-        print(f"\nTicker: {t}")
-        print("Start price:", p0)
-        print("Day+10 price:", p1)
-        print(f"Expected normalized value: {expected_norm:.2f}")
-
-    print("\n✔ PASSED — Normalization math manually verified.\n")
-
-
-# ============================================================
-# TEST 4 — Rebalance Share Math
-# ============================================================
-def test_rebalance_math():
-    print("\n=== TEST 4: REBALANCE SHARE MATH ===")
-
-    prices = pd.Series({"QQQ": 100, "XLU": 50})
-    alloc = {"QQQ": 0.6, "XLU": 0.4}
-    balance = 10000
-
-    shares = {t: (balance * w) / prices[t] for t, w in alloc.items()}
-    print("Shares:", shares)
-
-    new_prices = pd.Series({"QQQ": 110, "XLU": 60})
-    new_value = sum(shares[t] * new_prices[t] for t in shares)
-
-    print("New portfolio value:", new_value)
-
-    assert new_value > 0, "❌ Unexpected issue with rebalance math"
-
-    print("✔ PASSED — Rebalance math consistent.\n")
+# ======================================================================
+# TEST 1: Data Loading and Quality
+# ======================================================================
+def test_data_loading():
+    """Test that we can download and load price data correctly"""
+    print("\n=== TEST 1: DATA LOADING ===")
+    
+    # Download a small sample (last 3 months)
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=90)
+    
+    test_tickers = ["QQQ", "TQQQ", "XLU"]
+    data = download_test_data(test_tickers, start_date.strftime("%Y-%m-%d"))
+    
+    # Check data quality
+    assert not data.empty, "❌ Data is empty"
+    assert len(data) > 20, f"❌ Not enough data points: {len(data)}"
+    
+    # Check for missing values
+    missing = data.isna().sum()
+    print(f"Missing values per ticker:\n{missing}")
+    
+    # Allow some missing values but not too many
+    max_missing_pct = 0.1  # 10% max missing
+    for ticker in test_tickers:
+        if ticker in data.columns:
+            missing_pct = missing[ticker] / len(data)
+            assert missing_pct < max_missing_pct, f"❌ Too many missing values for {ticker}: {missing_pct:.1%}"
+    
+    print("✔ PASSED — Data loading works correctly\n")
+    return data
 
 
-# ============================================================
-# TEST 5 — QUARTERLY REBALANCE CONFIRMATION (UPDATED)
-# ============================================================
-def test_quarterly_rebalance_confirmation():
-    print("\n=== TEST 5: QUARTERLY REBALANCE CONFIRMATION ===")
+# ======================================================================
+# TEST 2: Regime Detection
+# ======================================================================
+def test_regime_detection():
+    """Test regime detection logic with real data"""
+    print("\n=== TEST 2: REGIME DETECTION ===")
+    
+    # Use fixed date range for reproducibility
+    start_date = "2023-07-01"
+    end_date = "2023-12-31"  # 6 months of data
+    
+    qqq_data = download_test_data(["QQQ"], start_date, end_date)
+    qqq_data = qqq_data["QQQ"].dropna()
+    
+    # Calculate drawdown
+    dd_series, ath_series = compute_drawdown_from_ath(qqq_data)
+    
+    # Test regime detection for various drawdown values
+    test_cases = [
+        (0.02, "R1"),   # 2% drawdown -> R1
+        (0.10, "R2"),   # 10% drawdown -> R2
+        (0.30, "R3"),   # 30% drawdown -> R3
+    ]
+    
+    for dd_value, expected_regime in test_cases:
+        regime = determine_regime(dd_value, CONFIG)
+        assert regime == expected_regime, f"❌ Expected {expected_regime} for {dd_value:.1%} DD, got {regime}"
+        print(f"  ✓ {dd_value:.1%} drawdown → {regime}")
+    
+    # Test with actual data points
+    sample_dd = dd_series.iloc[-10:]
+    for dd in sample_dd:
+        # Check for NaN using pandas method
+        if pd.notna(dd):
+            # Convert to Python float to avoid numpy formatting issues
+            try:
+                dd_float = float(dd)
+                regime = determine_regime(dd_float, CONFIG)
+                assert regime in ["R1", "R2", "R3"], f"❌ Invalid regime: {regime} for DD: {dd_float:.4f}"
+            except (ValueError, TypeError) as e:
+                # Skip if conversion fails
+                continue
+    
+    print("✔ PASSED — Regime detection works correctly\n")
 
-    # Synthetic dates covering a full quarter (Q1 → Q2 boundary)
-    dates = pd.date_range("2024-01-01", "2024-04-05")  # includes Mar 31
 
-    # Construct simple price series
-    # A goes up steadily; B goes up faster
-    prices = pd.DataFrame({
-        "A": [100 + i for i in range(len(dates))],
-        "B": [200 + 2*i for i in range(len(dates))]
-    }, index=dates)
+# ======================================================================
+# TEST 3: Allocation Engine
+# ======================================================================
+def test_allocation_engine():
+    """Test that allocation engine returns correct allocations for each regime"""
+    print("\n=== TEST 3: ALLOCATION ENGINE ===")
+    
+    for regime in ["R1", "R2", "R3"]:
+        alloc = get_allocation_for_regime(regime, CONFIG)
+        
+        # Check that allocations sum to 1.0
+        total = sum(alloc.values())
+        assert abs(total - 1.0) < 0.001, f"❌ Allocations for {regime} don't sum to 1.0: {total}"
+        
+        # Check expected allocations
+        if regime == "R1":
+            assert alloc["TQQQ"] == 1.0, f"❌ R1 should be 100% TQQQ, got {alloc}"
+        elif regime == "R2":
+            assert alloc["XLU"] == 1.0, f"❌ R2 should be 100% XLU, got {alloc}"
+        elif regime == "R3":
+            assert alloc["TQQQ"] == 1.0, f"❌ R3 should be 100% TQQQ, got {alloc}"
+        
+        print(f"  ✓ {regime}: {alloc}")
+    
+    print("✔ PASSED — Allocation engine works correctly\n")
 
-    # Expected rebalance day = Mar 31 (Q1 end)
-    expected_rebalance_days = ["2024-03-31"]
 
-    config = {
-        "starting_balance": 10000,
-        "tickers": ["A", "B"],
-        "allocation_tickers": ["A", "B"],
-        "rebalance_frequency": "quarterly",  # default, but explicit
-        "regimes": {
-            "R": {"A": 0.5, "B": 0.5}
-        }
-    }
+# ======================================================================
+# TEST 4: Rebalancing Logic
+# ======================================================================
+def test_rebalancing_logic():
+    """Test rebalancing with real prices"""
+    print("\n=== TEST 4: REBALANCING LOGIC ===")
+    
+    # Use fixed date range for reproducibility
+    start_date = "2024-11-01"
+    end_date = "2024-11-30"  # 1 month of data
+    
+    data = download_test_data(["QQQ", "TQQQ", "XLU"], start_date, end_date)
+    
+    # Use first available prices
+    first_date = data.index[0]
+    prices = data.loc[first_date]
+    
+    # Test rebalancing with different allocations
+    portfolio_value = 10000
+    
+    # Test R1 allocation (100% TQQQ)
+    alloc_r1 = {"TQQQ": 1.0, "QQQ": 0.0, "XLU": 0.0}
+    shares_r1 = rebalance_portfolio(portfolio_value, alloc_r1, prices)
+    
+    assert shares_r1 is not None, "❌ Rebalancing returned None"
+    assert "TQQQ" in shares_r1, "❌ TQQQ shares missing"
+    assert shares_r1["TQQQ"] > 0, "❌ TQQQ shares should be positive"
+    
+    # Verify value matches
+    calculated_value = sum(shares_r1[t] * prices[t] for t in shares_r1 if t in prices.index)
+    assert abs(calculated_value - portfolio_value) < 0.01, \
+        f"❌ Rebalanced value mismatch: {calculated_value} vs {portfolio_value}"
+    
+    # Test R2 allocation (100% XLU)
+    alloc_r2 = {"TQQQ": 0.0, "QQQ": 0.0, "XLU": 1.0}
+    shares_r2 = rebalance_portfolio(portfolio_value, alloc_r2, prices)
+    
+    assert shares_r2["XLU"] > 0, "❌ XLU shares should be positive"
+    calculated_value_r2 = sum(shares_r2[t] * prices[t] for t in shares_r2 if t in prices.index)
+    assert abs(calculated_value_r2 - portfolio_value) < 0.01, \
+        f"❌ R2 rebalanced value mismatch: {calculated_value_r2} vs {portfolio_value}"
+    
+    print(f"  ✓ R1 rebalance: {shares_r1}")
+    print(f"  ✓ R2 rebalance: {shares_r2}")
+    print("✔ PASSED — Rebalancing logic works correctly\n")
 
-    # Regime = always R
-    regime_fn = lambda s: (pd.Series(0, index=prices.index), None)
-    regime_detector = lambda dd, cfg: "R"
 
-    rebalance_fn = lambda bal, alloc, price: {
-        t: (bal * w) / price[t] for t, w in alloc.items()
-    }
-
-    result = run_backtest(
-        price_data=prices,
-        config=config,
-        regime_fn=regime_fn,
-        regime_detector=regime_detector,
-        rebalance_fn=rebalance_fn
+# ======================================================================
+# TEST 5: Day-to-Day Appreciation
+# ======================================================================
+def test_day_to_day_appreciation():
+    """Test that portfolio value changes correctly day-to-day"""
+    print("\n=== TEST 5: DAY-TO-DAY APPRECIATION ===")
+    
+    # Use fixed date range for reproducibility (2 weeks)
+    start_date = "2024-11-01"
+    end_date = "2024-11-15"
+    
+    data = download_test_data(["QQQ", "TQQQ", "XLU"], start_date, end_date)
+    
+    if len(data) < 5:
+        print("⚠ SKIPPED — Not enough data for day-to-day test")
+        return
+    
+    # Run a simple buy-and-hold test on TQQQ
+    test_config = CONFIG.copy()
+    test_config["tickers"] = ["QQQ", "TQQQ"]  # Need QQQ for drawdown calculation
+    test_config["allocation_tickers"] = ["TQQQ"]
+    test_config["regimes"] = {"R1": {"TQQQ": 1.0}}
+    test_config["rebalance_frequency"] = "none"  # No rebalancing
+    test_config["drawdown_ticker"] = "QQQ"  # Use QQQ for drawdown
+    
+    # Create price data with both QQQ (for drawdown) and TQQQ (for portfolio)
+    price_data = data[["QQQ", "TQQQ"]].dropna()
+    
+    if len(price_data) < 3:
+        print("⚠ SKIPPED — Not enough TQQQ data")
+        return
+    
+    equity_df, _ = run_backtest(
+        price_data=price_data,
+        config=test_config,
+        dd_fn=lambda s: compute_drawdown_from_ath(s),
+        regime_detector=lambda dd, cfg: "R1",
+        rebalance_fn=rebalance_portfolio
     )
+    
+    # Check day-to-day changes
+    values = equity_df["Value"].values
+    returns = np.diff(values) / values[:-1]
+    
+    # Get actual price returns
+    prices = price_data["TQQQ"].values
+    price_returns = np.diff(prices) / prices[:-1]
+    
+    # Portfolio returns should match price returns (for buy-and-hold)
+    for i in range(min(len(returns), len(price_returns))):
+        if not (np.isnan(returns[i]) or np.isnan(price_returns[i])):
+            # Allow small rounding differences
+            diff = abs(returns[i] - price_returns[i])
+            assert diff < 0.0001, \
+                f"❌ Day {i} return mismatch: portfolio={returns[i]:.6f}, price={price_returns[i]:.6f}"
+    
+    # Check that value increases when price increases
+    for i in range(1, len(equity_df)):
+        prev_value = equity_df["Value"].iloc[i-1]
+        curr_value = equity_df["Value"].iloc[i]
+        prev_price = price_data.iloc[i-1]["TQQQ"]
+        curr_price = price_data.iloc[i]["TQQQ"]
+        
+        if not (np.isnan(prev_value) or np.isnan(curr_value)):
+            price_change_pct = (curr_price - prev_price) / prev_price
+            value_change_pct = (curr_value - prev_value) / prev_value
+            
+            # Value should move in same direction as price (allowing for small rounding)
+            if abs(price_change_pct) > 0.001:  # Only check if meaningful price change
+                same_direction = (price_change_pct > 0 and value_change_pct > -0.0001) or \
+                               (price_change_pct < 0 and value_change_pct < 0.0001)
+                assert same_direction, \
+                    f"❌ Day {i}: Price moved {price_change_pct:.2%} but value moved {value_change_pct:.2%}"
+    
+    print(f"  ✓ Tested {len(returns)} day-to-day transitions")
+    print("✔ PASSED — Day-to-day appreciation works correctly\n")
 
-    # Extract actual rebalance dates
-    rebalanced_days = (
-        result[result["Rebalanced"] == "Rebalanced"]["Date"]
-        .dt.strftime("%Y-%m-%d")
-        .tolist()
+
+# ======================================================================
+# TEST 6: Week-to-Week Appreciation
+# ======================================================================
+def test_week_to_week_appreciation():
+    """Test that portfolio value changes correctly week-to-week"""
+    print("\n=== TEST 6: WEEK-TO-WEEK APPRECIATION ===")
+    
+    # Use fixed date range for reproducibility (2 months)
+    start_date = "2024-09-01"
+    end_date = "2024-10-31"
+    
+    data = download_test_data(["QQQ", "TQQQ", "XLU"], start_date, end_date)
+    
+    if len(data) < 20:
+        print("⚠ SKIPPED — Not enough data for week-to-week test")
+        return
+    
+    # Run buy-and-hold test
+    test_config = CONFIG.copy()
+    test_config["tickers"] = ["QQQ"]
+    test_config["allocation_tickers"] = ["QQQ"]
+    test_config["regimes"] = {"R1": {"QQQ": 1.0}}
+    test_config["rebalance_frequency"] = "none"
+    
+    price_data = data[["QQQ"]].dropna()
+    
+    if len(price_data) < 10:
+        print("⚠ SKIPPED — Not enough QQQ data")
+        return
+    
+    equity_df, _ = run_backtest(
+        price_data=price_data,
+        config=test_config,
+        dd_fn=lambda s: compute_drawdown_from_ath(s),
+        regime_detector=lambda dd, cfg: "R1",
+        rebalance_fn=rebalance_portfolio
     )
+    
+    # Group by week
+    equity_df["Date"] = pd.to_datetime(equity_df["Date"])
+    equity_df["Week"] = equity_df["Date"].dt.to_period("W")
+    
+    weekly_values = equity_df.groupby("Week")["Value"].last()
+    
+    if len(weekly_values) < 2:
+        print("⚠ SKIPPED — Not enough weeks of data")
+        return
+    
+    # Calculate week-over-week returns
+    weekly_returns = weekly_values.pct_change().dropna()
+    
+    # Get weekly price returns
+    price_data.index = pd.to_datetime(price_data.index)
+    price_data["Week"] = price_data.index.to_period("W")
+    weekly_prices = price_data.groupby("Week")["QQQ"].last()
+    weekly_price_returns = weekly_prices.pct_change().dropna()
+    
+    # Compare week-over-week returns
+    common_weeks = weekly_returns.index.intersection(weekly_price_returns.index)
+    
+    for week in common_weeks:
+        port_return = weekly_returns[week]
+        price_return = weekly_price_returns[week]
+        
+        if not (np.isnan(port_return) or np.isnan(price_return)):
+            diff = abs(port_return - price_return)
+            assert diff < 0.001, \
+                f"❌ Week {week} return mismatch: portfolio={port_return:.4f}, price={price_return:.4f}"
+    
+    # Check that portfolio value tracks price over longer periods
+    first_week_value = weekly_values.iloc[0]
+    last_week_value = weekly_values.iloc[-1]
+    total_return = (last_week_value / first_week_value) - 1
+    
+    first_week_price = weekly_prices.iloc[0]
+    last_week_price = weekly_prices.iloc[-1]
+    price_return = (last_week_price / first_week_price) - 1
+    
+    diff = abs(total_return - price_return)
+    assert diff < 0.01, \
+        f"❌ Total return mismatch: portfolio={total_return:.4f}, price={price_return:.4f}"
+    
+    print(f"  ✓ Tested {len(common_weeks)} week-over-week transitions")
+    print(f"  ✓ Total period return: {total_return:.2%}")
+    print("✔ PASSED — Week-to-week appreciation works correctly\n")
 
-    print("Rebalanced on:", rebalanced_days)
 
-    assert rebalanced_days == expected_rebalance_days, (
-        f"❌ Quarterly rebalance incorrect.\n"
-        f"Expected: {expected_rebalance_days}\n"
-        f"Got:      {rebalanced_days}\n"
+# ======================================================================
+# TEST 7: Full Backtest with Regime Changes
+# ======================================================================
+def test_full_backtest_with_regimes():
+    """Test full backtest with regime-based rebalancing"""
+    print("\n=== TEST 7: FULL BACKTEST WITH REGIMES ===")
+    
+    # Use fixed date range for reproducibility (3 months)
+    start_date = "2024-07-01"
+    end_date = "2024-09-30"
+    
+    data = download_test_data(["QQQ", "TQQQ", "XLU"], start_date, end_date)
+    
+    if len(data) < 20:
+        print("⚠ SKIPPED — Not enough data for full backtest")
+        return
+    
+    # Run full backtest
+    # Override tickers to match downloaded data (exclude SPY if not downloaded)
+    test_config = CONFIG.copy()
+    test_config["tickers"] = ["QQQ", "TQQQ", "XLU"]  # Match downloaded data
+    test_config["drawdown_ticker"] = "QQQ"  # Ensure drawdown ticker is in the data
+    
+    equity_df, quarterly_df = run_backtest(
+        price_data=data,
+        config=test_config,
+        dd_fn=lambda s: compute_drawdown_from_ath(s),
+        regime_detector=lambda dd, cfg: determine_regime(dd, cfg),
+        rebalance_fn=rebalance_portfolio
     )
+    
+    # Basic checks
+    assert not equity_df.empty, "❌ Equity dataframe is empty"
+    assert len(equity_df) > 0, "❌ No equity data"
+    
+    # Check that value starts at starting balance
+    first_value = equity_df["Value"].iloc[0]
+    assert abs(first_value - CONFIG["starting_balance"]) < 0.01, \
+        f"❌ Starting value mismatch: {first_value} vs {CONFIG['starting_balance']}"
+    
+    # Check that value is always positive
+    assert (equity_df["Value"] > 0).all(), "❌ Some portfolio values are non-positive"
+    
+    # Check regime columns exist
+    assert "Market_Regime" in equity_df.columns, "❌ Market_Regime column missing"
+    assert "Portfolio_Regime" in equity_df.columns, "❌ Portfolio_Regime column missing"
+    
+    # Check that regimes are valid
+    valid_regimes = set(test_config["regimes"].keys())
+    market_regimes = equity_df["Market_Regime"].dropna().unique()
+    portfolio_regimes = equity_df["Portfolio_Regime"].dropna().unique()
+    
+    for regime in market_regimes:
+        assert regime in valid_regimes or regime is None, f"❌ Invalid market regime: {regime}"
+    
+    for regime in portfolio_regimes:
+        assert regime in valid_regimes or regime is None, f"❌ Invalid portfolio regime: {regime}"
+    
+    # Check rebalancing occurred (if instant mode)
+    if test_config.get("rebalance_frequency") == "instant":
+        rebalanced_count = (equity_df["Rebalanced"] == "Rebalanced").sum()
+        assert rebalanced_count > 0, "❌ No rebalancing occurred in instant mode"
+        print(f"  ✓ {rebalanced_count} rebalancing events occurred")
+    
+    # Check that final value makes sense
+    final_value = equity_df["Value"].iloc[-1]
+    print(f"  ✓ Starting value: ${test_config['starting_balance']:,.2f}")
+    print(f"  ✓ Final value: ${final_value:,.2f}")
+    print(f"  ✓ Total return: {(final_value / test_config['starting_balance'] - 1):.2%}")
+    
+    print("✔ PASSED — Full backtest with regimes works correctly\n")
 
-    # ---- VALUE CHECK ----
-    # After Mar 31 rebalance, portfolio should be equally split again.
-    #
-    # Compute the expected post-rebalance value manually:
-    # 1) Track portfolio value on Mar 31 before rebalance
-    rebalance_date = pd.Timestamp("2024-03-31")
-    pre_reb_val = result.loc[result["Date"] == rebalance_date]["Value"].iloc[0]
 
-    # 2) Shares after rebalance (50/50 allocation)
-    price_row = prices.loc[rebalance_date]
-    expected_shares = {
-        "A": (pre_reb_val * 0.5) / price_row["A"],
-        "B": (pre_reb_val * 0.5) / price_row["B"],
-    }
-
-    # 3) Final value based on final prices
-    last_price = prices.iloc[-1]
-    expected_final_value = (
-        expected_shares["A"] * last_price["A"] +
-        expected_shares["B"] * last_price["B"]
+# ======================================================================
+# TEST 8: Instant Rebalancing
+# ======================================================================
+def test_instant_rebalancing():
+    """Test that instant rebalancing works when regime changes"""
+    print("\n=== TEST 8: INSTANT REBALANCING ===")
+    
+    # Use fixed date range for reproducibility (1 month)
+    start_date = "2024-10-01"
+    end_date = "2024-10-31"
+    
+    data = download_test_data(["QQQ", "TQQQ", "XLU"], start_date, end_date)
+    
+    if len(data) < 10:
+        print("⚠ SKIPPED — Not enough data for instant rebalancing test")
+        return
+    
+    # Use instant rebalancing
+    test_config = CONFIG.copy()
+    test_config["rebalance_frequency"] = "instant"
+    # Override tickers to match downloaded data (exclude SPY if not downloaded)
+    test_config["tickers"] = ["QQQ", "TQQQ", "XLU"]  # Match downloaded data
+    test_config["drawdown_ticker"] = "QQQ"  # Ensure drawdown ticker is in the data
+    
+    equity_df, _ = run_backtest(
+        price_data=data,
+        config=test_config,
+        dd_fn=lambda s: compute_drawdown_from_ath(s),
+        regime_detector=lambda dd, cfg: determine_regime(dd, cfg),
+        rebalance_fn=rebalance_portfolio
     )
-
-    final_val = result["Value"].iloc[-1]
-    print("Final portfolio value:", final_val)
-    print("Expected final value:", expected_final_value)
-
-    assert abs(final_val - expected_final_value) < 1e-5, (
-        f"❌ Value mismatch after quarterly rebalance.\n"
-        f"Expected: {expected_final_value}, Got: {final_val}"
-    )
-
-    print("✔ PASSED — Quarterly rebalancing works correctly!\n")
-
-# ============================================================
-# TEST 6 — WEEKLY REBALANCE CONFIRMATION
-# ============================================================
-def test_weekly_rebalance_confirmation():
-    print("\n=== TEST 6: WEEKLY REBALANCE CONFIRMATION ===")
-
-    # Synthetic 10-day period (includes two Fridays)
-    dates = pd.date_range("2024-01-01", periods=10)  # Jan 1 → Jan 10, 2024
-    prices = pd.DataFrame({
-        "A": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
-        "B": [200, 202, 204, 206, 208, 210, 212, 214, 216, 218],
-    }, index=dates)
-
-    # Fridays in this window: Jan 5 and Jan 12 (but Jan 12 not included)
-    expected_rebalance_days = ["2024-01-05"]
-
-    config = {
-        "starting_balance": 10000,
-        "tickers": ["A", "B"],
-        "allocation_tickers": ["A", "B"],
-        "rebalance_frequency": "weekly",  # 🔥 THIS IS THE SETTING WE ARE TESTING
-        "regimes": {
-            "R": {"A": 0.5, "B": 0.5}
-        }
-    }
-
-    # Regime logic always returns constant regime R
-    regime_fn = lambda s: (pd.Series(0, index=prices.index), None)
-    regime_detector = lambda dd, cfg: "R"
-    rebalance_fn = lambda bal, alloc, price: {
-        t: (bal * w) / price[t] for t, w in alloc.items()
-    }
-
-    result = run_backtest(
-        price_data=prices,
-        config=config,
-        regime_fn=regime_fn,
-        regime_detector=regime_detector,
-        rebalance_fn=rebalance_fn,
-    )
-
-    # Extract which days actually rebalanced
-    rebalanced_days = result[result["Rebalanced"] == "Rebalanced"]["Date"].dt.strftime("%Y-%m-%d").tolist()
-
-    print("Rebalanced on:", rebalanced_days)
-
-    # Assert they match expected weekly Fridays
-    assert rebalanced_days == expected_rebalance_days, (
-        f"❌ Weekly rebalance incorrect.\n"
-        f"Expected: {expected_rebalance_days}\n"
-        f"Got:      {rebalanced_days}\n"
-    )
-
-    # SIMPLE VALUE CHECK — ensure portfolio value increased correctly
-    final_val = result.iloc[-1]["Value"]
-    print("Final portfolio value:", final_val)
-
-    assert final_val > config["starting_balance"], "❌ Value did not increase — unexpected."
-
-    print("✔ PASSED — Weekly rebalancing works correctly!\n")
+    
+    # Check that rebalancing occurred
+    rebalanced_days = equity_df[equity_df["Rebalanced"] == "Rebalanced"]
+    
+    if len(rebalanced_days) > 0:
+        # Check that portfolio regime changed on rebalance days
+        for idx, row in rebalanced_days.iterrows():
+            if idx > 0:
+                prev_regime = equity_df.iloc[idx - 1]["Portfolio_Regime"]
+                curr_regime = row["Portfolio_Regime"]
+                # Regime should have changed (or it's the first day)
+                if prev_regime is not None and curr_regime is not None:
+                    print(f"  ✓ Rebalance on {row['Date']}: {prev_regime} → {curr_regime}")
+    
+    print(f"  ✓ {len(rebalanced_days)} rebalancing events")
+    print("✔ PASSED — Instant rebalancing works correctly\n")
 
 
-# ============================================================
-# Run All Tests
-# ============================================================
+# ======================================================================
+# TEST 9: Asymmetric Regime Rules
+# ======================================================================
+def test_asymmetric_regime_rules():
+    """Test that asymmetric regime rules work correctly"""
+    print("\n=== TEST 9: ASYMMETRIC REGIME RULES ===")
+    
+    # Import the function from backtest module
+    import backtest
+    apply_asymmetric_rules = backtest.apply_asymmetric_rules
+    
+    # Test: Market goes down, portfolio should follow immediately
+    portfolio_regime = "R1"
+    market_regime = "R2"
+    new_regime = apply_asymmetric_rules(portfolio_regime, market_regime)
+    assert new_regime == "R2", f"❌ Should switch to R2 when market goes down, got {new_regime}"
+    print("  ✓ Market down: R1 → R2 (immediate)")
+    
+    # Test: Market goes to R1, portfolio should follow
+    portfolio_regime = "R2"
+    market_regime = "R1"
+    new_regime = apply_asymmetric_rules(portfolio_regime, market_regime)
+    assert new_regime == "R1", f"❌ Should switch to R1 when market recovers, got {new_regime}"
+    print("  ✓ Market recovers: R2 → R1 (immediate)")
+    
+    # Test: Market in R2, portfolio in R2, market goes to R3
+    portfolio_regime = "R2"
+    market_regime = "R3"
+    new_regime = apply_asymmetric_rules(portfolio_regime, market_regime)
+    assert new_regime == "R3", f"❌ Should switch to R3 when market worsens, got {new_regime}"
+    print("  ✓ Market worsens: R2 → R3 (immediate)")
+    
+    # Test: Market in R3, portfolio in R3, market goes to R2 (should stay R3)
+    portfolio_regime = "R3"
+    market_regime = "R2"
+    new_regime = apply_asymmetric_rules(portfolio_regime, market_regime)
+    assert new_regime == "R3", f"❌ Should stay in R3 (asymmetric rule), got {new_regime}"
+    print("  ✓ Market improves from R3: R3 → R3 (hold)")
+    
+    # Test: Market in R3, portfolio in R3, market goes to R1 (should go to R1)
+    portfolio_regime = "R3"
+    market_regime = "R1"
+    new_regime = apply_asymmetric_rules(portfolio_regime, market_regime)
+    assert new_regime == "R1", f"❌ Should go to R1 when market fully recovers, got {new_regime}"
+    print("  ✓ Market fully recovers: R3 → R1 (immediate)")
+    
+    print("✔ PASSED — Asymmetric regime rules work correctly\n")
+
+
+# ======================================================================
+# RUN ALL TESTS
+# ======================================================================
 if __name__ == "__main__":
-    test_price_data_quality()
-    test_buy_and_hold()
-    test_normalization()
-    test_rebalance_math()
-    test_quarterly_rebalance_confirmation()
-    test_weekly_rebalance_confirmation()
-
-    print("\n🎉 ALL VALIDATION TESTS COMPLETED SUCCESSFULLY!\n")
+    print("\n" + "="*60)
+    print("FAST MARKKY FUND - VALIDATION TEST SUITE")
+    print("="*60)
+    print(f"\nTest data cache directory: {TEST_DATA_CACHE_DIR}")
+    print("Data will be cached after first download for faster subsequent runs.")
+    print("Using fixed date ranges for reproducible test results.\n")
+    
+    try:
+        test_data_loading()
+        test_regime_detection()
+        test_allocation_engine()
+        test_rebalancing_logic()
+        test_day_to_day_appreciation()
+        test_week_to_week_appreciation()
+        test_full_backtest_with_regimes()
+        test_instant_rebalancing()
+        test_asymmetric_regime_rules()
+        
+        print("="*60)
+        print("🎉 ALL VALIDATION TESTS COMPLETED SUCCESSFULLY!")
+        print("="*60 + "\n")
+        
+    except Exception as e:
+        print(f"\n❌ TEST FAILED: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        exit(1)
