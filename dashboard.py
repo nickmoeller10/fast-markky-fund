@@ -13,6 +13,8 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import numpy as np
 from datetime import datetime
+import io
+from exporter import export_to_excel
 
 
 # ======================================================================
@@ -428,6 +430,109 @@ def render_dashboard(equity_df, quarterly_df, config):
     
     st.markdown("---")
     
+    # Equity Curve Table
+    st.header("📊 Equity Curve Data")
+    
+    # Create a formatted display of key columns
+    display_df = equity_df.copy()
+    
+    # Select key columns for display
+    key_cols = ["Date", "Value", "Pct_Growth"]
+    
+    # Add normalized benchmark columns
+    norm_cols = [c for c in equity_df.columns if c.endswith("_norm")]
+    key_cols.extend(norm_cols)
+    
+    # Add regime columns
+    if "Market_Regime" in equity_df.columns:
+        key_cols.append("Market_Regime")
+    if "Portfolio_Regime" in equity_df.columns:
+        key_cols.append("Portfolio_Regime")
+    
+    # Add shares and values for allocation tickers
+    if config and "allocation_tickers" in config:
+        for ticker in config["allocation_tickers"]:
+            if f"{ticker}_shares" in equity_df.columns:
+                key_cols.append(f"{ticker}_shares")
+            if f"{ticker}_value" in equity_df.columns:
+                key_cols.append(f"{ticker}_value")
+    
+    # Filter to only columns that exist
+    display_cols = [c for c in key_cols if c in display_df.columns]
+    display_df = display_df[display_cols].copy()
+    
+    # Format the dataframe for display
+    def format_equity_curve(df):
+        """Format equity curve dataframe for better display"""
+        formatted_df = df.copy()
+        
+        # Format percentage columns
+        if "Pct_Growth" in formatted_df.columns:
+            formatted_df["Pct_Growth"] = formatted_df["Pct_Growth"].apply(lambda x: f"{x:.2%}" if pd.notna(x) else "")
+        
+        # Format dollar columns
+        dollar_cols = ["Value"] + [c for c in formatted_df.columns if c.endswith("_value") or c.endswith("_norm")]
+        for col in dollar_cols:
+            if col in formatted_df.columns:
+                formatted_df[col] = formatted_df[col].apply(
+                    lambda x: f"${x:,.2f}" if pd.notna(x) else ""
+                )
+        
+        # Format share columns
+        share_cols = [c for c in formatted_df.columns if c.endswith("_shares")]
+        for col in share_cols:
+            if col in formatted_df.columns:
+                formatted_df[col] = formatted_df[col].apply(
+                    lambda x: f"{x:,.4f}" if pd.notna(x) and x != 0 else ""
+                )
+        
+        return formatted_df
+    
+    # Add date range filter
+    if len(display_df) > 0:
+        min_date = pd.to_datetime(display_df["Date"]).min()
+        max_date = pd.to_datetime(display_df["Date"]).max()
+        
+        col_filter1, col_filter2 = st.columns(2)
+        with col_filter1:
+            start_filter = st.date_input(
+                "Start Date",
+                value=min_date.date(),
+                min_value=min_date.date(),
+                max_value=max_date.date()
+            )
+        with col_filter2:
+            end_filter = st.date_input(
+                "End Date",
+                value=max_date.date(),
+                min_value=min_date.date(),
+                max_value=max_date.date()
+            )
+        
+        # Filter by date range
+        display_df["Date"] = pd.to_datetime(display_df["Date"])
+        filtered_df = display_df[
+            (display_df["Date"] >= pd.Timestamp(start_filter)) &
+            (display_df["Date"] <= pd.Timestamp(end_filter))
+        ].copy()
+        
+        # Format for display
+        formatted_df = format_equity_curve(filtered_df)
+        
+        # Display table with pagination
+        st.dataframe(
+            formatted_df,
+            use_container_width=True,
+            height=400,
+            hide_index=True
+        )
+        
+        st.caption(f"Showing {len(filtered_df)} of {len(display_df)} rows")
+    else:
+        st.info("No equity curve data available")
+    
+    st.markdown("---")
+    
     # Rebalance Events
     if quarterly_df is not None and not quarterly_df.empty:
         st.header("🔄 Rebalance Events")
@@ -483,6 +588,86 @@ def render_dashboard(equity_df, quarterly_df, config):
     # Data Export
     st.markdown("---")
     st.header("💾 Data Export")
+    
+    # Excel Export Button
+    st.subheader("📊 Excel Export")
+    
+    def generate_excel_file():
+        """Generate Excel file in memory"""
+        import tempfile
+        import os
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+            tmp_filename = tmp_file.name
+        
+        try:
+            # Use the exporter function to create Excel file
+            from exporter import (
+                create_formats, write_equity_sheet, write_chart_sheet,
+                write_quarterly_sheet, write_parameters_sheet,
+                write_regimes_sheet, write_results_sheet
+            )
+            
+            # Create Excel writer
+            writer = pd.ExcelWriter(
+                tmp_filename,
+                engine="xlsxwriter",
+                engine_kwargs={"options": {"nan_inf_to_errors": True}},
+            )
+            workbook = writer.book
+            
+            formats = create_formats(workbook)
+            
+            # Write all sheets
+            write_equity_sheet(writer, equity_df, formats, config["tickers"])
+            write_chart_sheet(workbook, equity_df)
+            write_quarterly_sheet(writer, quarterly_df, formats, config)
+            write_parameters_sheet(writer, config)
+            write_regimes_sheet(writer, config, formats)
+            write_results_sheet(writer, equity_df, formats)
+            
+            writer.close()
+            
+            # Read file into memory
+            with open(tmp_filename, 'rb') as f:
+                file_data = f.read()
+            
+            return file_data
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_filename):
+                try:
+                    os.remove(tmp_filename)
+                except:
+                    pass
+    
+    # Generate and download Excel file
+    if st.button("📊 Generate Excel Report", help="Click to generate the full Excel report (may take a few seconds)"):
+        with st.spinner("Generating Excel report... This may take a few seconds."):
+            try:
+                excel_data = generate_excel_file()
+                st.session_state['excel_data'] = excel_data
+                st.session_state['excel_generated'] = True
+                st.success("Excel report generated successfully!")
+            except Exception as e:
+                st.error(f"Error generating Excel file: {str(e)}")
+                st.session_state['excel_generated'] = False
+    
+    # Show download button if Excel has been generated
+    if st.session_state.get('excel_generated', False) and 'excel_data' in st.session_state:
+        st.download_button(
+            label="📥 Download Full Excel Report (backtest_results.xlsx)",
+            data=st.session_state['excel_data'],
+            file_name=f"backtest_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Downloads the complete Excel report with all sheets: Equity Curve, Chart, Rebalance Summary, Parameters, Regimes, and Results"
+        )
+    elif not st.session_state.get('excel_generated', False):
+        st.info("💡 Click 'Generate Excel Report' above to create the full Excel file with all sheets.")
+    
+    st.markdown("---")
+    st.subheader("📄 CSV Exports")
     
     col1, col2 = st.columns(2)
     
