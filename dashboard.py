@@ -339,11 +339,115 @@ def create_allocation_chart(equity_df, config):
     return fig
 
 
+def create_dividend_chart(dividend_df, equity_df):
+    """Create dividend distribution chart showing when dividends were paid, yield, and reinvestment target"""
+    if dividend_df.empty or len(dividend_df) == 0:
+        return None
+    
+    # Convert Date to datetime if needed
+    dividend_df = dividend_df.copy()
+    dividend_df["Date"] = pd.to_datetime(dividend_df["Date"])
+    
+    # Create subplots: amount, yield, and portfolio percentage
+    fig = make_subplots(
+        rows=3, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        subplot_titles=("Dividend Amount ($)", "Dividend Yield (%)", "Portfolio Impact (%)"),
+        row_heights=[0.4, 0.3, 0.3]
+    )
+    
+    # Get unique reinvestment targets for color coding
+    targets = dividend_df["Reinvestment_Target"].unique()
+    colors_map = {
+        "cash": "#FF6B6B",
+        "TQQQ": "#FFA500",
+        "QQQ": "#4ECDC4",
+        "XLU": "#95E1D3",
+        "SPY": "#F38181"
+    }
+    
+    # Group by reinvestment target
+    for target in targets:
+        target_data = dividend_df[dividend_df["Reinvestment_Target"] == target]
+        color = colors_map.get(target, "#999999")
+        
+        # Dividend Amount (bar chart)
+        fig.add_trace(go.Bar(
+            x=target_data["Date"],
+            y=target_data["Dividend_Amount"],
+            name=f"Reinvested in {target}",
+            marker_color=color,
+            hovertemplate=f"<b>{target}</b><br>" +
+                         "Date: %{x}<br>" +
+                         "Amount: $%{y:,.2f}<br>" +
+                         "<extra></extra>",
+            legendgroup=target,
+            showlegend=True
+        ), row=1, col=1)
+        
+        # Dividend Yield (scatter)
+        fig.add_trace(go.Scatter(
+            x=target_data["Date"],
+            y=target_data["Dividend_Yield"],
+            mode="markers",
+            name=f"Yield ({target})",
+            marker=dict(color=color, size=8, symbol="circle"),
+            hovertemplate=f"<b>{target}</b><br>" +
+                         "Date: %{x}<br>" +
+                         "Yield: %{y:.2f}%<br>" +
+                         "<extra></extra>",
+            legendgroup=target,
+            showlegend=False
+        ), row=2, col=1)
+        
+        # Portfolio Percentage (scatter)
+        fig.add_trace(go.Scatter(
+            x=target_data["Date"],
+            y=target_data["Portfolio_Pct"],
+            mode="markers",
+            name=f"Portfolio % ({target})",
+            marker=dict(color=color, size=8, symbol="diamond"),
+            hovertemplate=f"<b>{target}</b><br>" +
+                         "Date: %{x}<br>" +
+                         "Portfolio Impact: %{y:.3f}%<br>" +
+                         "<extra></extra>",
+            legendgroup=target,
+            showlegend=False
+        ), row=3, col=1)
+    
+    # Update axes
+    fig.update_xaxes(title_text="Date", row=3, col=1)
+    fig.update_yaxes(title_text="Amount ($)", row=1, col=1)
+    fig.update_yaxes(title_text="Yield (%)", row=2, col=1)
+    fig.update_yaxes(title_text="Portfolio %", row=3, col=1)
+    
+    # Update layout
+    fig.update_layout(
+        title="Dividend Distribution Over Time",
+        height=800,
+        hovermode="x unified",
+        template="plotly_white",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    return fig
+
+
 # ======================================================================
 # MAIN DASHBOARD FUNCTION
 # ======================================================================
-def render_dashboard(equity_df, quarterly_df, config):
+def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
     """Render the complete dashboard"""
+    
+    if dividend_df is None:
+        dividend_df = pd.DataFrame()
     
     # Title and header
     st.title("📈 Fast Markky Fund - Backtest Dashboard")
@@ -465,8 +569,69 @@ def render_dashboard(equity_df, quarterly_df, config):
     
     st.markdown("---")
     
-    # Equity Curve Table
-    st.header("📊 Equity Curve Data")
+    # Dividend Distribution Chart
+    # Always show this section if dividend reinvestment is enabled
+    dividend_reinvestment_enabled = config.get("dividend_reinvestment", False)
+    
+    if dividend_reinvestment_enabled:
+        st.header("💰 Dividend Distribution")
+        
+        # Check if dividend_df exists and has data
+        has_dividend_data = (
+            dividend_df is not None 
+            and isinstance(dividend_df, pd.DataFrame)
+            and not dividend_df.empty 
+            and len(dividend_df) > 0
+        )
+        
+        if has_dividend_data:
+            dividend_chart = create_dividend_chart(dividend_df, equity_df)
+            if dividend_chart:
+                st.plotly_chart(dividend_chart, use_container_width=True)
+            
+            # Dividend Summary Table
+            with st.expander("📋 Dividend Summary", expanded=True):
+                summary_df = dividend_df.copy()
+                summary_df["Date"] = pd.to_datetime(summary_df["Date"])
+                summary_df = summary_df.sort_values("Date", ascending=False)
+                
+                # Format columns for display
+                display_cols = ["Date", "Ticker", "Dividend_Amount", "Dividend_Yield", "Portfolio_Pct", "Reinvestment_Target"]
+                display_cols = [c for c in display_cols if c in summary_df.columns]
+                
+                formatted_df = summary_df[display_cols].copy()
+                if "Dividend_Amount" in formatted_df.columns:
+                    formatted_df["Dividend_Amount"] = formatted_df["Dividend_Amount"].apply(lambda x: f"${x:,.2f}")
+                if "Dividend_Yield" in formatted_df.columns:
+                    formatted_df["Dividend_Yield"] = formatted_df["Dividend_Yield"].apply(lambda x: f"{x:.2f}%")
+                if "Portfolio_Pct" in formatted_df.columns:
+                    formatted_df["Portfolio_Pct"] = formatted_df["Portfolio_Pct"].apply(lambda x: f"{x:.3f}%")
+                
+                st.dataframe(formatted_df, use_container_width=True, hide_index=True)
+                
+                # Summary statistics
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Total Dividends", f"${dividend_df['Dividend_Amount'].sum():,.2f}")
+                with col2:
+                    st.metric("Dividend Events", len(dividend_df))
+                with col3:
+                    avg_yield = dividend_df['Dividend_Yield'].mean() if 'Dividend_Yield' in dividend_df.columns else 0
+                    st.metric("Avg Yield", f"{avg_yield:.2f}%")
+                with col4:
+                    total_pct = dividend_df['Portfolio_Pct'].sum() if 'Portfolio_Pct' in dividend_df.columns else 0
+                    st.metric("Total % of Portfolio", f"{total_pct:.2f}%")
+        else:
+            st.info("💰 Dividend reinvestment is enabled but no dividends were received during this period.")
+            st.caption("This could mean:")
+            st.caption("• The tickers in your portfolio don't pay dividends")
+            st.caption("• The date range selected had no dividend payments")
+            st.caption("• Dividend data was not available for the selected period")
+    
+    st.markdown("---")
+    
+    # Performance Summary Table
+    st.header("📊 Performance Summary")
     
     # Create a formatted display of key columns
     display_df = equity_df.copy()
@@ -564,7 +729,7 @@ def render_dashboard(equity_df, quarterly_df, config):
         
         st.caption(f"Showing {len(filtered_df)} of {len(display_df)} rows")
     else:
-        st.info("No equity curve data available")
+        st.info("No performance data available")
     
     st.markdown("---")
     

@@ -41,6 +41,9 @@ if 'config' not in st.session_state:
         "drawdown_ticker": "QQQ",
         "rebalance_frequency": "instant",
         "rebalance_holiday_rule": "next_trading_day",
+        "rebalance_strategy": "down_only",  # Options: "down_only", "up_only", "always"
+        "dividend_reinvestment": False,  # Enable dividend reinvestment
+        "dividend_reinvestment_target": "cash",  # Options: "cash" or ticker symbol
         "tickers": ["QQQ", "TQQQ", "XLU", "SPY"],
         "allocation_tickers": ["QQQ", "TQQQ", "XLU"],
         "minimum_allocation": 0.00,
@@ -138,7 +141,7 @@ def render_configuration_page():
     
     # Rebalancing Settings
     with st.expander("🔄 Rebalancing Settings", expanded=True):
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             rebalance_options = ["instant", "daily", "weekly", "monthly", "quarterly", "semiannual", "annual", "none"]
@@ -156,6 +159,72 @@ def render_configuration_page():
                 index=config["tickers"].index(config["drawdown_ticker"]) if config["drawdown_ticker"] in config["tickers"] else 0,
                 help="Ticker used to measure drawdown from all-time high"
             )
+        
+        with col3:
+            strategy_options = ["down_only", "up_only", "always"]
+            strategy_labels = {
+                "down_only": "Regime Shift Down Only",
+                "up_only": "Regime Shift Up Only",
+                "always": "Always"
+            }
+            strategy_descriptions = {
+                "down_only": "Rebalance when market goes DOWN, hold on partial recoveries",
+                "up_only": "Rebalance when market goes UP, hold on declines",
+                "always": "Rebalance whenever regime changes"
+            }
+            
+            current_strategy = config.get("rebalance_strategy", "down_only")
+            strategy_index = strategy_options.index(current_strategy) if current_strategy in strategy_options else 0
+            
+            selected_strategy = st.selectbox(
+                "Rebalance Strategy",
+                options=strategy_options,
+                index=strategy_index,
+                format_func=lambda x: strategy_labels[x],
+                help=strategy_descriptions.get(current_strategy, "")
+            )
+            config["rebalance_strategy"] = selected_strategy
+            
+            # Show description
+            st.caption(strategy_descriptions.get(selected_strategy, ""))
+    
+    # Dividend Reinvestment Settings
+    with st.expander("💰 Dividend Reinvestment", expanded=False):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            config["dividend_reinvestment"] = st.checkbox(
+                "Enable Dividend Reinvestment",
+                value=config.get("dividend_reinvestment", False),
+                help="If enabled, dividends will be reinvested according to the target setting"
+            )
+        
+        with col2:
+            if config["dividend_reinvestment"]:
+                # Build options: cash + allocation tickers
+                dividend_options = ["cash"] + config.get("allocation_tickers", config["tickers"])
+                current_target = config.get("dividend_reinvestment_target", "cash")
+                
+                # Find index, default to 0 (cash) if not found
+                try:
+                    target_index = dividend_options.index(current_target)
+                except ValueError:
+                    target_index = 0
+                
+                selected_target = st.selectbox(
+                    "Reinvestment Target",
+                    options=dividend_options,
+                    index=target_index,
+                    help="Choose where to reinvest dividends. 'cash' will hold dividends until next rebalance."
+                )
+                config["dividend_reinvestment_target"] = selected_target
+                
+                if selected_target == "cash":
+                    st.caption("💵 Dividends will be held as cash and redistributed on next rebalance")
+                else:
+                    st.caption(f"📈 Dividends will be immediately reinvested into {selected_target}")
+            else:
+                st.caption("Dividend reinvestment is disabled")
     
     # Ticker Configuration
     with st.expander("📈 Ticker Configuration", expanded=True):
@@ -283,6 +352,8 @@ def render_configuration_page():
                 index=0 if config["rebalance_holiday_rule"] == "next_trading_day" else 1,
                 help="How to handle rebalancing on holidays"
             )
+        
+        # Note: Rebalance Strategy is now in main Rebalancing Settings section above
     
     st.markdown("---")
     
@@ -364,11 +435,24 @@ def run_backtest_from_ui():
         status_text.text("📥 Loading price data from Yahoo Finance...")
         progress_bar.progress(10)
         
-        price_data = load_price_data(
-            config["tickers"],
-            config["start_date"],
-            config.get("end_date")
-        )
+        # Check if dividend reinvestment is enabled
+        dividend_reinvestment = config.get("dividend_reinvestment", False)
+        
+        if dividend_reinvestment:
+            price_data, dividend_data = load_price_data(
+                config["tickers"],
+                config["start_date"],
+                config.get("end_date"),
+                include_dividends=True
+            )
+        else:
+            price_data = load_price_data(
+                config["tickers"],
+                config["start_date"],
+                config.get("end_date"),
+                include_dividends=False
+            )
+            dividend_data = None
         
         progress_bar.progress(30)
         
@@ -376,12 +460,13 @@ def run_backtest_from_ui():
         status_text.text("🔄 Running backtest simulation...")
         progress_bar.progress(50)
         
-        equity_df, quarterly_df = run_backtest(
+        equity_df, quarterly_df, dividend_df = run_backtest(
             price_data,
             config,
             lambda s: compute_drawdown_from_ath(s),
             lambda dd, cfg: determine_regime(dd, cfg),
-            rebalance_portfolio
+            rebalance_portfolio,
+            dividend_data=dividend_data
         )
         
         progress_bar.progress(90)
@@ -391,6 +476,7 @@ def run_backtest_from_ui():
         st.session_state.backtest_results = {
             'equity_df': equity_df,
             'quarterly_df': quarterly_df,
+            'dividend_df': dividend_df,
             'config': config.copy()
         }
         
@@ -443,7 +529,8 @@ def render_results_page():
     render_dashboard(
         results['equity_df'],
         results['quarterly_df'],
-        results['config']
+        results['config'],
+        dividend_df=results.get('dividend_df', pd.DataFrame())
     )
 
 # ======================================================================

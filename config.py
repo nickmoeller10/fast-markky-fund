@@ -34,6 +34,9 @@ CONFIG = {
     # "rebalance_frequency": "weekly",
     "rebalance_frequency": "instant", # Instant yields best performance typically
     "rebalance_holiday_rule": "next_trading_day",
+    "rebalance_strategy": "down_only",  # Options: "down_only", "up_only", "always"
+    "dividend_reinvestment": False,  # Enable dividend reinvestment
+    "dividend_reinvestment_target": "cash",  # Options: "cash" or ticker symbol (e.g., "TQQQ", "QQQ", "XLU")
 
     # =============================================================
     # TICKER CONFIGURATION
