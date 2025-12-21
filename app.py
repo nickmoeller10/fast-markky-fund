@@ -344,8 +344,64 @@ def render_configuration_page():
         regimes = config["regimes"]
         regime_names = sorted(list(regimes.keys()))  # Sort for consistent display
         
-        for regime_name in regime_names:
-            st.markdown(f"#### {regime_name}")
+        # Add/Remove regime controls
+        col_add, col_info = st.columns([1, 3])
+        with col_add:
+            if st.button("➕ Add Regime", key="add_regime_btn"):
+                # Generate next regime name (R1, R2, R3, etc.)
+                existing_numbers = []
+                for name in regime_names:
+                    if name.startswith("R") and name[1:].isdigit():
+                        existing_numbers.append(int(name[1:]))
+                
+                if existing_numbers:
+                    next_num = max(existing_numbers) + 1
+                else:
+                    next_num = 1
+                
+                new_regime_name = f"R{next_num}"
+                
+                # Create new regime with default values
+                new_regime = {
+                    "dd_low": 0.0,
+                    "dd_high": 1.0,
+                }
+                
+                # Initialize allocations for all allocation tickers
+                for ticker in config["allocation_tickers"]:
+                    new_regime[ticker] = 0.0
+                
+                # If there are allocation tickers, distribute evenly
+                if len(config["allocation_tickers"]) > 0:
+                    equal_alloc = 1.0 / len(config["allocation_tickers"])
+                    for ticker in config["allocation_tickers"]:
+                        new_regime[ticker] = equal_alloc
+                
+                regimes[new_regime_name] = new_regime
+                st.rerun()
+        
+        with col_info:
+            st.caption("💡 Add regimes to define different market conditions. Each regime needs drawdown thresholds and allocations that sum to 100%.")
+        
+        st.markdown("---")
+        
+        # Display existing regimes with remove buttons
+        for i, regime_name in enumerate(regime_names):
+            # Create columns for regime header with remove button
+            header_col1, header_col2 = st.columns([10, 1])
+            
+            with header_col1:
+                st.markdown(f"#### {regime_name}")
+            
+            with header_col2:
+                # Only allow removal if there's more than one regime
+                if len(regime_names) > 1:
+                    if st.button("🗑️", key=f"remove_{regime_name}", help=f"Remove {regime_name}"):
+                        del regimes[regime_name]
+                        st.rerun()
+                else:
+                    st.caption("(min 1)")
+            
             regime = regimes[regime_name]
             
             # Ensure all allocation tickers exist in regime
@@ -393,8 +449,8 @@ def render_configuration_page():
                     alloc_cols = st.columns(len(config["allocation_tickers"]))
                     total_alloc = 0.0
                     
-                    for i, ticker in enumerate(config["allocation_tickers"]):
-                        with alloc_cols[i]:
+                    for j, ticker in enumerate(config["allocation_tickers"]):
+                        with alloc_cols[j]:
                             alloc_value = st.number_input(
                                 ticker,
                                 min_value=0.0,
@@ -415,7 +471,7 @@ def render_configuration_page():
                 else:
                     st.warning("⚠️ No allocation tickers configured")
             
-            if regime_name != regime_names[-1]:  # Don't add separator after last regime
+            if i < len(regime_names) - 1:  # Don't add separator after last regime
                 st.markdown("---")
     
     # Advanced Settings
