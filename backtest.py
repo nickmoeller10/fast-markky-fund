@@ -55,7 +55,41 @@ def calculate_normalized_values(price_df, tickers, starting_val, start_date):
 # Drawdown from ATH
 # ------------------------------------------------------------
 def compute_drawdown_from_ath(series):
+    """
+    Calculate drawdown from all-time high.
+    Uses cummax() which calculates ATH from the beginning of the series.
+    """
     ath = series.cummax()
+    dd = (ath - series) / ath
+    return dd, ath
+
+
+def compute_drawdown_from_historical_ath(series, historical_ath_value=None):
+    """
+    Calculate drawdown using a historical ATH value.
+    If historical_ath_value is provided, use it; otherwise use cummax().
+    
+    Args:
+        series: Price series for the portfolio period
+        historical_ath_value: Optional ATH value from full historical data
+    
+    Returns:
+        Tuple of (drawdown_series, ath_series)
+    """
+    if historical_ath_value is not None:
+        # Use the historical ATH value
+        # ATH series is the max of historical ATH and current series cummax
+        ath = series.cummax().clip(lower=historical_ath_value)
+        # But we want to use the historical ATH as the baseline
+        # So if current price is below historical ATH, use historical ATH
+        ath = pd.Series(index=series.index, data=historical_ath_value)
+        # Update ATH if current series exceeds historical ATH
+        current_max = series.cummax()
+        ath = pd.concat([ath, current_max], axis=1).max(axis=1)
+    else:
+        # Fallback to standard calculation
+        ath = series.cummax()
+    
     dd = (ath - series) / ath
     return dd, ath
 
@@ -299,8 +333,197 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
 
     norm_df = calculate_normalized_values(price_df, tickers, starting_val, start_date)
 
-    dd_raw, ath_raw = dd_fn(price_data[drawdown_ticker])
-    dd_raw = dd_raw.fillna(0).clip(0, 1)
+    # -------------------------
+    # PRE-PORTFOLIO SIMULATION: Track regimes from historical ATH
+    # -------------------------
+    # Download full historical data for drawdown_ticker from its inception
+    log(f"Downloading full historical data for {drawdown_ticker} from inception for pre-portfolio simulation...")
+    import yfinance as yf
+    
+    # Download from ticker inception (use 1980 as safe early date - yfinance returns from actual inception)
+    historical_series_full = None
+    historical_dd_full = None
+    historical_ath_full = None
+    pre_portfolio_start_date = None
+    
+    try:
+        historical_data = yf.download(
+            drawdown_ticker, 
+            start="1980-01-01",  # Very early date - yfinance will return from ticker's actual inception
+            end=None,  # Get all available data up to current
+            auto_adjust=True,
+            progress=False
+        )
+        
+        if not historical_data.empty and "Close" in historical_data.columns:
+            historical_series_full = historical_data["Close"].dropna()
+            
+            if len(historical_series_full) > 0:
+                log(f"Downloaded {len(historical_series_full)} days of historical data for {drawdown_ticker}")
+                log(f"Historical data range: {historical_series_full.index.min()} to {historical_series_full.index.max()}")
+                
+                # Calculate ATH and drawdown from full historical series (from ticker inception)
+                historical_ath_full = historical_series_full.cummax()
+                historical_dd_full = (historical_ath_full - historical_series_full) / historical_ath_full
+                
+                # Get the earliest date (ticker inception)
+                pre_portfolio_start_date = historical_series_full.index.min()
+                log(f"Pre-portfolio simulation will start from {pre_portfolio_start_date} (ticker inception)")
+                
+                # Get price and drawdown at portfolio start date
+                portfolio_start_ts = pd.to_datetime(start_date)
+                if portfolio_start_ts in historical_series_full.index:
+                    start_price = float(historical_series_full.loc[portfolio_start_ts])
+                    start_ath = float(historical_ath_full.loc[portfolio_start_ts])
+                    start_dd = float(historical_dd_full.loc[portfolio_start_ts])
+                    log(f"At portfolio start ({start_date}): Price=${start_price:.2f}, ATH=${start_ath:.2f}, DD={start_dd:.2%}")
+                else:
+                    # Find closest date before portfolio start
+                    dates_before = historical_series_full.index[historical_series_full.index < portfolio_start_ts]
+                    if len(dates_before) > 0:
+                        closest_date = dates_before[-1]
+                        start_price = float(historical_series_full.loc[closest_date])
+                        start_ath = float(historical_ath_full.loc[closest_date])
+                        start_dd = float(historical_dd_full.loc[closest_date])
+                        log(f"At portfolio start ({start_date}): Using closest historical date {closest_date}, Price=${start_price:.2f}, ATH=${start_ath:.2f}, DD={start_dd:.2%}")
+    except Exception as e:
+        log(f"Warning: Error downloading historical data for {drawdown_ticker}: {e}")
+    
+    # -------------------------
+    # PRE-PORTFOLIO SIMULATION: Track regimes while holding cash
+    # -------------------------
+    portfolio_regime_at_start = None
+    market_regime_at_start = None
+    
+    if historical_dd_full is not None and pre_portfolio_start_date is not None:
+        log(f"Running pre-portfolio simulation from {pre_portfolio_start_date} to {start_date} (holding cash, tracking regimes)...")
+        
+        portfolio_start_ts = pd.to_datetime(start_date)
+        # Get all dates from historical data up to (and including if available) portfolio start
+        pre_portfolio_dates = historical_dd_full.index[
+            (historical_dd_full.index >= pre_portfolio_start_date) & 
+            (historical_dd_full.index <= portfolio_start_ts)
+        ]
+        
+        # If portfolio start date is not in historical index, get dates up to but not including it
+        if len(pre_portfolio_dates) == 0 or (portfolio_start_ts not in pre_portfolio_dates and len(pre_portfolio_dates) > 0):
+            pre_portfolio_dates = historical_dd_full.index[
+                (historical_dd_full.index >= pre_portfolio_start_date) & 
+                (historical_dd_full.index < portfolio_start_ts)
+            ]
+        
+        # Track regime through pre-portfolio period
+        current_portfolio_regime = None
+        rebalance_strategy = config.get("rebalance_strategy", "down_only")
+        
+        for pre_date in pre_portfolio_dates:
+            pre_dd = historical_dd_full.loc[pre_date]
+            market_regime = regime_detector(pre_dd, config)
+            
+            if market_regime is not None:
+                # Apply rebalancing strategy to determine portfolio regime
+                if current_portfolio_regime is None:
+                    current_portfolio_regime = market_regime
+                else:
+                    # Apply rebalancing strategy
+                    if rebalance_strategy == "down_only":
+                        current_portfolio_regime = apply_asymmetric_rules_down_only(current_portfolio_regime, market_regime)
+                    elif rebalance_strategy == "up_only":
+                        current_portfolio_regime = apply_asymmetric_rules_up_only(current_portfolio_regime, market_regime)
+                    elif rebalance_strategy == "always":
+                        current_portfolio_regime = apply_always_rebalance(current_portfolio_regime, market_regime)
+                    else:
+                        current_portfolio_regime = market_regime
+        
+        # Get final regime at portfolio start
+        # Try to get drawdown at portfolio start date, or use the last pre-portfolio date
+        if portfolio_start_ts in historical_dd_full.index:
+            portfolio_start_dd = historical_dd_full.loc[portfolio_start_ts]
+            market_regime_at_start = regime_detector(portfolio_start_dd, config)
+        elif len(pre_portfolio_dates) > 0:
+            # Use the last available date before portfolio start
+            final_pre_date = pre_portfolio_dates[-1]
+            portfolio_start_dd = historical_dd_full.loc[final_pre_date]
+            market_regime_at_start = regime_detector(portfolio_start_dd, config)
+        else:
+            # Fallback: calculate drawdown from price_data for start date
+            if start_date in price_data.index and drawdown_ticker in price_data.columns:
+                start_price = price_data[drawdown_ticker].loc[start_date]
+                if pd.notna(start_price) and historical_ath_full is not None:
+                    # Use historical ATH to calculate drawdown
+                    portfolio_start_ts = pd.to_datetime(start_date)
+                    historical_ath_before = historical_ath_full[historical_ath_full.index < portfolio_start_ts]
+                    if len(historical_ath_before) > 0:
+                        max_ath = float(historical_ath_before.max())
+                        first_dd = (max_ath - float(start_price)) / max_ath if max_ath > 0 else 0.0
+                    else:
+                        first_dd = 0.0
+                else:
+                    first_dd = 0.0
+            else:
+                first_dd = 0.0
+            market_regime_at_start = regime_detector(first_dd, config)
+        
+        # Determine portfolio regime at start
+        if current_portfolio_regime is None:
+            portfolio_regime_at_start = market_regime_at_start
+        else:
+            # Apply rebalancing strategy one more time for the start date
+            if rebalance_strategy == "down_only":
+                portfolio_regime_at_start = apply_asymmetric_rules_down_only(current_portfolio_regime, market_regime_at_start)
+            elif rebalance_strategy == "up_only":
+                portfolio_regime_at_start = apply_asymmetric_rules_up_only(current_portfolio_regime, market_regime_at_start)
+            elif rebalance_strategy == "always":
+                portfolio_regime_at_start = apply_always_rebalance(current_portfolio_regime, market_regime_at_start)
+            else:
+                portfolio_regime_at_start = market_regime_at_start
+        
+        log(f"Pre-portfolio simulation complete. Regime at portfolio start: Market={market_regime_at_start}, Portfolio={portfolio_regime_at_start}")
+    
+    # -------------------------
+    # Calculate drawdown for portfolio period using historical ATH
+    # -------------------------
+    if historical_ath_full is not None and historical_series_full is not None:
+        # Get historical ATH value before portfolio start
+        portfolio_start_ts = pd.to_datetime(start_date)
+        historical_ath_before_start = historical_ath_full[historical_ath_full.index < portfolio_start_ts]
+        
+        if len(historical_ath_before_start) > 0:
+            max_historical_ath = float(historical_ath_before_start.max())
+            log(f"Historical ATH for {drawdown_ticker} before portfolio start: ${max_historical_ath:.2f}")
+            
+            # Calculate drawdown for portfolio period
+            portfolio_prices = price_data[drawdown_ticker].reindex(price_data.index)
+            
+            if len(portfolio_prices.dropna()) > 0:
+                # Calculate ATH for portfolio period
+                ath_raw = pd.Series(index=portfolio_prices.index, dtype=float)
+                running_max = max_historical_ath
+                
+                for date in portfolio_prices.index:
+                    current_price = portfolio_prices.loc[date]
+                    if pd.notna(current_price):
+                        running_max = max(running_max, current_price)
+                        ath_raw.loc[date] = running_max
+                    else:
+                        ath_raw.loc[date] = running_max
+                
+                # Calculate drawdown
+                dd_raw = (ath_raw - portfolio_prices) / ath_raw
+            else:
+                log(f"Warning: No portfolio period data for {drawdown_ticker}, using standard calculation")
+                dd_raw, ath_raw = dd_fn(price_data[drawdown_ticker])
+        else:
+            log(f"Warning: No historical ATH before {start_date}, using standard calculation")
+            dd_raw, ath_raw = dd_fn(price_data[drawdown_ticker])
+    else:
+        # Fallback to standard calculation
+        log(f"Warning: Using standard ATH calculation (no historical data available)")
+        dd_raw, ath_raw = dd_fn(price_data[drawdown_ticker])
+    
+    # Ensure dd_raw and ath_raw are aligned with price_data index
+    dd_raw = dd_raw.reindex(price_data.index).fillna(0).clip(0, 1)
+    ath_raw = ath_raw.reindex(price_data.index)
 
     rebalance_freq = config.get("rebalance_frequency", "monthly")
     rebalance_dates = get_rebalance_dates(price_df.index, rebalance_freq)
@@ -309,10 +532,22 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
     # -------------------------
     # INITIAL ALLOCATION
     # -------------------------
-    first_dd = dd_raw.loc[start_date]
-    market_regime, portfolio_regime, shares = get_initial_allocation(
-        start_date, price_df, first_dd, config, regime_detector, rebalance_fn
-    )
+    # Use the regime determined from pre-portfolio simulation, or calculate if not available
+    if portfolio_regime_at_start is not None and market_regime_at_start is not None:
+        log(f"Using pre-portfolio simulation regime: Market={market_regime_at_start}, Portfolio={portfolio_regime_at_start}")
+        market_regime = market_regime_at_start
+        portfolio_regime = portfolio_regime_at_start
+        # Get allocation for the determined regime and rebalance
+        alloc = get_allocation_for_regime(portfolio_regime, config)
+        shares = rebalance_fn(config["starting_balance"], alloc, price_df.loc[start_date])
+        log(f"Initial rebalance on {start_date} into {portfolio_regime} with allocation: {alloc}")
+    else:
+        # Fallback: calculate regime from first day's drawdown
+        first_dd = dd_raw.loc[start_date]
+        market_regime, portfolio_regime, shares = get_initial_allocation(
+            start_date, price_df, first_dd, config, regime_detector, rebalance_fn
+        )
+        log(f"Using standard initial allocation (no pre-portfolio simulation): Market={market_regime}, Portfolio={portfolio_regime}")
     
     # Ensure shares is initialized (should never be None, but handle edge cases)
     if shares is None:
