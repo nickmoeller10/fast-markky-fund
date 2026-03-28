@@ -24,6 +24,11 @@ CONFIG = {
 
     "drawdown_ticker": "QQQ", # The Ticker we want to measure drawdown from
 
+    # False: standard ATH (cummax from inception + pre-start history download).
+    # True: rolling peak over the last N calendar years (fallback to standard ATH until N years exist).
+    "drawdown_window_enabled": False,
+    "drawdown_window_years": 5,
+
     # =============================================================
     # REBALANCE SETTINGS
     # =============================================================

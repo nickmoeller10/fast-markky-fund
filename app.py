@@ -72,6 +72,8 @@ if 'config' not in st.session_state:
             },
         },
         "use_worst_case_simulation": False,
+        "drawdown_window_enabled": False,
+        "drawdown_window_years": 5,
     }
 
 if 'backtest_results' not in st.session_state:
@@ -245,7 +247,7 @@ def render_configuration_page():
                 "Drawdown Ticker",
                 options=config["tickers"],
                 index=config["tickers"].index(config["drawdown_ticker"]) if config["drawdown_ticker"] in config["tickers"] else 0,
-                help="Ticker used to measure drawdown from all-time high"
+                help="Ticker whose price path drives regime drawdown (standard ATH or rolling window)"
             )
         
         with col3:
@@ -275,6 +277,28 @@ def render_configuration_page():
             
             # Show description
             st.caption(strategy_descriptions.get(selected_strategy, ""))
+        
+        st.markdown("**Drawdown reference**")
+        dw_a, dw_b = st.columns(2)
+        with dw_a:
+            config["drawdown_window_enabled"] = st.checkbox(
+                "Rolling drawdown window (vs. standard ATH)",
+                value=bool(config.get("drawdown_window_enabled", False)),
+                help="When enabled, the reference peak is the highest close over the trailing N calendar years. "
+                     "Until N full years of history exist for the drawdown ticker, standard ATH (cummax) is used. "
+                     "Full ticker history is still downloaded for pre-portfolio simulation and future use.",
+            )
+        with dw_b:
+            if config["drawdown_window_enabled"]:
+                config["drawdown_window_years"] = int(
+                    st.number_input(
+                        "Window length (calendar years)",
+                        min_value=1,
+                        value=max(1, int(config.get("drawdown_window_years", 5))),
+                        step=1,
+                        help="Integer number of calendar years in the trailing peak window.",
+                    )
+                )
     
     # Dividend Reinvestment Settings
     with st.expander("💰 Dividend Reinvestment", expanded=False):
@@ -711,6 +735,10 @@ def render_results_page():
 # ======================================================================
 def main():
     """Main application entry point"""
+    
+    # Header at top of page
+    st.header("My name is Nick and I suck at investing.")
+    st.markdown("---")
     
     # Sidebar navigation
     with st.sidebar:

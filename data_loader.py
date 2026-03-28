@@ -4,6 +4,47 @@ import yfinance as yf
 from datetime import datetime
 import pandas as pd
 
+
+def normalize_close_columns(closes):
+    """
+    yfinance often returns a Close block with MultiIndex columns ('Close', 'QQQ').
+    Flatten to ticker-only column names for downstream code.
+    """
+    if closes is None:
+        return closes
+    if isinstance(closes, pd.Series):
+        return closes
+    if not isinstance(closes, pd.DataFrame):
+        return closes
+    out = closes.copy()
+    if isinstance(out.columns, pd.MultiIndex):
+        out.columns = out.columns.get_level_values(-1)
+    return out
+
+
+def yf_close_to_series(close_block, ticker_hint=None):
+    """
+    Build a single 1D price Series from yfinance 'Close' output (Series or DataFrame).
+    Required for correct rolling / cummax drawdown math.
+    """
+    if close_block is None:
+        return pd.Series(dtype=float)
+    if isinstance(close_block, pd.Series):
+        return close_block.dropna().astype(float).sort_index()
+    if not isinstance(close_block, pd.DataFrame):
+        return pd.Series(dtype=float)
+    df = normalize_close_columns(close_block).dropna(how="all")
+    if df.empty:
+        return pd.Series(dtype=float)
+    if ticker_hint is not None and ticker_hint in df.columns:
+        s = df[ticker_hint]
+    elif df.shape[1] == 1:
+        s = df.iloc[:, 0]
+    else:
+        s = df.iloc[:, 0]
+    return s.astype(float).dropna().sort_index()
+
+
 def load_price_data(tickers, start_date, end_date=None, include_dividends=False):
     """
     Load price data from Yahoo Finance.
@@ -27,6 +68,7 @@ def load_price_data(tickers, start_date, end_date=None, include_dividends=False)
 
     log(f"Download complete. Shape: {data.shape}")
     closes = data["Close"].dropna(how="all")
+    closes = normalize_close_columns(closes)
     log(f"Cleaned price data shape: {closes.shape}")
 
     if not include_dividends:

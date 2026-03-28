@@ -33,7 +33,7 @@ def run():
     )
 
     print("Running backtest...\n")
-    equity_df, quarterly_df = run_backtest(
+    equity_df, quarterly_df, _ = run_backtest(
         price_data,
         CONFIG,
         lambda s: compute_drawdown_from_ath(s),
@@ -50,8 +50,13 @@ def run():
     if drawdown_ticker is None or drawdown_ticker not in price_data.columns:
         raise ValueError(f"drawdown-ticker '{drawdown_ticker}' not found in price data.")
 
-    latest_dd, _ = compute_drawdown_from_ath(price_data[drawdown_ticker])
-    regime = determine_regime(latest_dd.iloc[-1], CONFIG)
+    dd_col = f"{drawdown_ticker}_DD_raw"
+    if dd_col in equity_df.columns:
+        latest_dd = float(equity_df[dd_col].iloc[-1])
+    else:
+        dd_series, _ = compute_drawdown_from_ath(price_data[drawdown_ticker])
+        latest_dd = float(dd_series.iloc[-1])
+    regime = determine_regime(latest_dd, CONFIG)
     print(get_allocation_for_regime(regime, CONFIG))
 
     if confirm_export():

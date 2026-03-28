@@ -168,3 +168,6 @@ cython_debug/
 *.xlsx
 *.xlsm
 *.xlsb
+
+# Test data cache
+test_data_cache/

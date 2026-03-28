@@ -632,12 +632,36 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
     
     # Performance Summary Table
     st.header("📊 Performance Summary")
+    drawdown_ticker = config.get("drawdown_ticker", "QQQ") if config else "QQQ"
+    ath_col = f"{drawdown_ticker}_ATH_raw"
+    try:
+        _nw = int(config.get("drawdown_window_years", 5)) if config else 5
+    except (TypeError, ValueError):
+        _nw = 5
+    _window_on = bool(config.get("drawdown_window_enabled")) if config else False
+    if _window_on and _nw > 0:
+        _window_desc = f"{_nw}-year window"
+    else:
+        _window_desc = "full history"
+    ath_label = f"{drawdown_ticker} - {_window_desc} ATH ($)"
+    if ath_col in equity_df.columns:
+        st.caption(
+            f"{ath_label} is the reference peak used for regime drawdown that day. "
+            f"{drawdown_ticker} close ($) is the adjusted close from your backtest download. "
+            "Drawdown is (ATH minus close) divided by ATH. "
+            "ATH should always be greater than or equal to close on the same row."
+        )
     
     # Create a formatted display of key columns
     display_df = equity_df.copy()
     
     # Select key columns for display
     key_cols = ["Date", "Value", "Pct_Growth"]
+    if ath_col in display_df.columns:
+        key_cols.append(ath_col)
+    px_col = f"{drawdown_ticker}_price"
+    if px_col in display_df.columns and px_col not in key_cols:
+        key_cols.append(px_col)
     
     # Add normalized benchmark columns
     norm_cols = [c for c in equity_df.columns if c.endswith("_norm")]
@@ -670,8 +694,14 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
         if "Pct_Growth" in formatted_df.columns:
             formatted_df["Pct_Growth"] = formatted_df["Pct_Growth"].apply(lambda x: f"{x:.2%}" if pd.notna(x) else "")
         
-        # Format dollar columns
-        dollar_cols = ["Value"] + [c for c in formatted_df.columns if c.endswith("_value") or c.endswith("_norm")]
+        # Format dollar columns (incl. drawdown reference ATH and spot prices)
+        dollar_cols = ["Value"] + [
+            c for c in formatted_df.columns
+            if c.endswith("_value")
+            or c.endswith("_norm")
+            or c.endswith("_ATH_raw")
+            or c.endswith("_price")
+        ]
         for col in dollar_cols:
             if col in formatted_df.columns:
                 formatted_df[col] = formatted_df[col].apply(
@@ -718,6 +748,13 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
         
         # Format for display
         formatted_df = format_equity_curve(filtered_df)
+        rename_perf = {}
+        if ath_col in formatted_df.columns:
+            rename_perf[ath_col] = ath_label
+        if px_col in formatted_df.columns:
+            rename_perf[px_col] = f"{drawdown_ticker} close ($)"
+        if rename_perf:
+            formatted_df = formatted_df.rename(columns=rename_perf)
         
         # Display table with pagination
         st.dataframe(
@@ -777,6 +814,12 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
             st.write(f"**End Date:** {config.get('end_date', 'Current')}")
             st.write(f"**Rebalance Frequency:** {config.get('rebalance_frequency', 'N/A')}")
             st.write(f"**Drawdown Ticker:** {config.get('drawdown_ticker', 'N/A')}")
+            if config.get("drawdown_window_enabled"):
+                st.write(
+                    f"**Drawdown reference:** Rolling {int(config.get('drawdown_window_years', 5))}-year window"
+                )
+            else:
+                st.write("**Drawdown reference:** Standard ATH")
         
         with col2:
             st.subheader("Regimes")
