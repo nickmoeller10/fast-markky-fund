@@ -37,11 +37,11 @@ class TestDesiredSignalOverrideMode(unittest.TestCase):
     def test_r1_style_zones(self):
         rp = _regime_with_overrides(
             up={"enabled": True, "direction": "above", "threshold": 0.0},
-            pr={"enabled": True, "direction": "below", "threshold": -3.0},
+            pr={"enabled": True, "direction": "below", "threshold": -2.0},
         )
         self.assertEqual(desired_signal_override_mode(1.0, rp), "upside")
-        self.assertEqual(desired_signal_override_mode(-3.0, rp), "protection")
-        self.assertEqual(desired_signal_override_mode(-3.5, rp), "protection")
+        self.assertEqual(desired_signal_override_mode(-2.0, rp), "protection")
+        self.assertEqual(desired_signal_override_mode(-2.5, rp), "protection")
         self.assertEqual(desired_signal_override_mode(-1.0, rp), "none")
 
     def test_nan_preserves_current_mode(self):

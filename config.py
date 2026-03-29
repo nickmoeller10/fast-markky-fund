@@ -25,7 +25,7 @@ CONFIG = {
     # False: standard ATH (cummax from inception + pre-start history download).
     # True: rolling peak over the last N calendar years (fallback to standard ATH until N years exist).
     "drawdown_window_enabled": True,
-    "drawdown_window_years": 2,
+    "drawdown_window_years": 1,
 
     # =============================================================
     # REBALANCE SETTINGS
@@ -53,11 +53,11 @@ CONFIG = {
     # =============================================================
     # REGIME DEFINITIONS
     # =============================================================
-    # 2y rolling QQQ peak. Per-regime rebalance_on_*: match | hold.
+    # 1y rolling QQQ peak. Per-regime rebalance_on_*: match | hold.
     "regimes": {
         "R1": {
             "dd_low": 0.0,
-            "dd_high": 0.06,
+            "dd_high": 0.08,
             "TQQQ": 1.0,
             "QQQ": 0.0,
             "XLU": 0.0,
@@ -65,7 +65,6 @@ CONFIG = {
             "rebalance_on_upward": "match",
             "signal_overrides": {
                 "upside": {
-                    "enabled": True,
                     "label": "Max Bull",
                     "direction": "above",
                     "threshold": 0,
@@ -74,10 +73,9 @@ CONFIG = {
                     "XLU": 0.0,
                 },
                 "protection": {
-                    "enabled": True,
                     "label": "Bull Fading",
                     "direction": "below",
-                    "threshold": -3,
+                    "threshold": -2,
                     "TQQQ": 0.0,
                     "QQQ": 1.0,
                     "XLU": 0.0,
@@ -85,7 +83,7 @@ CONFIG = {
             },
         },
         "R2": {
-            "dd_low": 0.06,
+            "dd_low": 0.08,
             "dd_high": 0.28,
             "TQQQ": 0.0,
             "QQQ": 0.0,
@@ -94,16 +92,14 @@ CONFIG = {
             "rebalance_on_upward": "hold",
             "signal_overrides": {
                 "upside": {
-                    "enabled": True,
                     "label": "Recovery Confirmed",
                     "direction": "above",
-                    "threshold": 4,
+                    "threshold": 3,
                     "TQQQ": 0.0,
                     "QQQ": 0.5,
                     "XLU": 0.5,
                 },
                 "protection": {
-                    "enabled": True,
                     "label": "Deteriorating Fast",
                     "direction": "below",
                     "threshold": -4,
@@ -123,16 +119,14 @@ CONFIG = {
             "rebalance_on_upward": "match",
             "signal_overrides": {
                 "upside": {
-                    "enabled": True,
                     "label": "Capitulation Reversal",
                     "direction": "above",
-                    "threshold": 2,
-                    "TQQQ": 0.5,
-                    "QQQ": 0.5,
+                    "threshold": 3,
+                    "TQQQ": 0.3,
+                    "QQQ": 0.7,
                     "XLU": 0.0,
                 },
                 "protection": {
-                    "enabled": True,
                     "label": "Crisis Deepening",
                     "direction": "below",
                     "threshold": -5,

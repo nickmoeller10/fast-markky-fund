@@ -1,8 +1,12 @@
 import pandas as pd
 import numpy as np
 from allocation_engine import get_allocation_for_regime, tradable_allocation
-from data_loader import yf_close_to_series, load_vix_series
-from signal_layers import build_signal_total_series
+from data_loader import yf_close_to_series
+from signal_layers import (
+    build_combined_spy_series,
+    build_combined_vix_series,
+    build_signal_total_series,
+)
 from signal_override_engine import (
     ensure_regime_signal_overrides,
     desired_signal_override_mode,
@@ -833,13 +837,14 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         ensure_regime_signal_overrides(_rp)
 
     if "SPY" in price_df.columns:
-        spy_for_signal = price_df["SPY"].astype(float)
+        spy_panel_sig = price_df["SPY"].astype(float)
     else:
-        spy_for_signal = pd.Series(np.nan, index=price_df.index, dtype=float)
-    vix_start = (pd.Timestamp(panel_start) - pd.Timedelta(days=400)).strftime("%Y-%m-%d")
-    vix_end = (pd.Timestamp(price_df.index[-1]) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    vix_for_signal = load_vix_series(vix_start, vix_end)
-    signal_total_series = build_signal_total_series(price_df.index, spy_for_signal, vix_for_signal)
+        spy_panel_sig = pd.Series(np.nan, index=price_df.index, dtype=float)
+    spy_signal_merged = build_combined_spy_series(price_df.index, spy_panel_sig)
+    vix_signal_merged = build_combined_vix_series(price_df.index, None)
+    signal_total_series = build_signal_total_series(
+        price_df.index, spy_signal_merged, vix_signal_merged
+    )
 
     rebalance_freq = config.get("rebalance_frequency", "monthly")
     rebalance_dates = get_rebalance_dates(price_df.index, rebalance_freq)

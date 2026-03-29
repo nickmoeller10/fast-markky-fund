@@ -155,6 +155,39 @@ def load_price_data(tickers, start_date, end_date=None, include_dividends=False)
 VIX_YAHOO_SYMBOL = "^VIX"
 
 
+def load_spy_series(start_date, end_date=None):
+    """
+    Daily SPY adjusted close from Yahoo Finance (ticker **SPY**).
+
+    Used with extended history before the portfolio panel so rolling signals
+    (252d VIX z uses separate ^VIX series; MACD / 50–200 MA on SPY) warm up
+    from the first backtest session.
+    """
+    if end_date is None:
+        log(f"Downloading SPY from {start_date} (end: current date)")
+        data = yf.download("SPY", start=start_date, auto_adjust=True, progress=False)
+    else:
+        log(f"Downloading SPY from {start_date} to {end_date}")
+        data = yf.download(
+            "SPY",
+            start=start_date,
+            end=end_date,
+            auto_adjust=True,
+            progress=False,
+        )
+
+    if data is None or data.empty:
+        log("Warning: no SPY data returned")
+        return pd.Series(dtype=float)
+
+    closes = data["Close"].dropna(how="all")
+    closes = normalize_close_columns(closes)
+    s = yf_close_to_series(closes, ticker_hint="SPY")
+    if isinstance(s.index, pd.DatetimeIndex) and s.index.tz is not None:
+        s = s.tz_convert("UTC").tz_localize(None)
+    return s.sort_index()
+
+
 def load_vix_series(start_date, end_date=None):
     """
     Daily VIX index close from Yahoo Finance (ticker **^VIX**).
