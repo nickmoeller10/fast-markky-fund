@@ -3,6 +3,8 @@ import xlsxwriter
 import os
 import math
 
+from utils import max_drawdown_from_equity_curve
+
 
 # ------------------------------------------------------------
 # Unique filename generator
@@ -90,6 +92,8 @@ def write_equity_sheet(writer, equity_df, formats, tickers):
 
             if col_name == "Date":
                 fmt = formats["date"]
+            elif col_name == "VIX":
+                fmt = formats["number"]
             elif col_name in percent_cols:
                 fmt = formats["percent"]
             elif col_name in price_cols or col_name in value_cols:
@@ -279,6 +283,9 @@ def write_results_sheet(writer, equity_df, formats):
     cagr = (end_val / start_val) ** (1 / years) - 1 if years > 0 else 0
 
     last.insert(len(last.columns), "Avg_YoY_Growth", cagr)
+    # Worst peak-to-trough over full equity path (not the same as final-row Portfolio_DD)
+    sim_mdd = max_drawdown_from_equity_curve(equity_df["Value"])
+    last.insert(len(last.columns), "Max_Drawdown_Simulation", sim_mdd)
 
     sheet_name = "Results"
     last.to_excel(writer, sheet_name=sheet_name, index=False)
@@ -300,7 +307,13 @@ def write_results_sheet(writer, equity_df, formats):
             fmt = formats["date"]
         elif ("Value" in name or "_price" in name or "_value" in name):
             fmt = formats["dollar"]
-        elif ("Pct" in name or "Growth" in name or "YoY" in name or "DD" in name):
+        elif (
+            "Pct" in name
+            or "Growth" in name
+            or "YoY" in name
+            or "DD" in name
+            or "Drawdown" in name
+        ):
             fmt = formats["percent"]
         elif name.endswith("_shares"):
             fmt = formats["number"]

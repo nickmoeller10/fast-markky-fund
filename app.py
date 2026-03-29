@@ -8,11 +8,12 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
+from typing import Optional
 import pickle
 import os
 
 # Import our modules
-from data_loader import load_price_data
+from data_loader import load_price_data, load_vix_series, attach_vix_to_equity_df
 from regime_engine import compute_drawdown_from_ath, determine_regime
 from allocation_engine import get_allocation_for_regime
 from rebalance_engine import rebalance_portfolio
@@ -97,18 +98,38 @@ if 'backtest_results' not in st.session_state:
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "Configuration"
 
+# Streamlit >=1.33: fragments limit reruns to this block when widgets here change.
+# Older versions: decorator is a no-op (full-script rerun, same as before).
+_st_fragment = getattr(st, "fragment", None) or getattr(st, "experimental_fragment", None)
+
+
+def _config_fragment_fallback(f):
+    return f
+
+
+if _st_fragment is None:
+    _st_fragment = _config_fragment_fallback
+
+
+@st.cache_data(ttl=86_400, show_spinner=False)
+def _cached_ticker_earliest_date(ticker: str) -> Optional[str]:
+    """One row per ticker per day TTL — avoids Yahoo round-trips on every UI tick."""
+    from worst_case_simulator import get_earliest_date
+
+    ts = get_earliest_date(ticker, start_date="1980-01-01")
+    if ts is None:
+        return None
+    return ts.strftime("%Y-%m-%d")
+
+
 # ======================================================================
 # CONFIGURATION PAGE
 # ======================================================================
-def render_configuration_page():
-    """Render the configuration/setup page"""
-    
-    st.title("⚙️ Configuration")
-    st.markdown("Configure your backtest parameters below, then click **Run Backtest** to execute.")
-    st.markdown("---")
-    
+@_st_fragment
+def render_configuration_editor():
+    """All config widgets + validation; reruns as a unit when any widget here changes."""
     config = st.session_state.config
-    
+
     # Portfolio Parameters Section
     with st.expander("📊 Portfolio Parameters", expanded=True):
         col1, col2, col3 = st.columns(3)
@@ -203,7 +224,6 @@ def render_configuration_page():
         
         if use_worst_case:
             # Check earliest dates for OTHER tickers (excluding QQQ/TQQQ) for informational purposes
-            from worst_case_simulator import get_earliest_date
             allocation_tickers = config.get("allocation_tickers", config["tickers"])
             all_tickers = list(set(allocation_tickers + config.get("tickers", [])))
             
@@ -213,9 +233,9 @@ def render_configuration_page():
             # Get earliest dates for OTHER tickers only (for info display)
             ticker_earliest_dates = {}
             for ticker in other_tickers:
-                earliest_date = get_earliest_date(ticker, start_date="1980-01-01")
-                if earliest_date:
-                    ticker_earliest_dates[ticker] = earliest_date
+                iso = _cached_ticker_earliest_date(ticker)
+                if iso:
+                    ticker_earliest_dates[ticker] = pd.Timestamp(iso)
             
             st.info("""
             **What is simulated (when this is enabled)**
@@ -237,9 +257,9 @@ def render_configuration_page():
             
             # Check other tickers
             for ticker in other_tickers:
-                earliest_date = get_earliest_date(ticker)
-                if earliest_date:
-                    earliest_info.append(f"• **{ticker}**: Earliest date is {earliest_date.strftime('%Y-%m-%d')}")
+                iso = _cached_ticker_earliest_date(ticker)
+                if iso:
+                    earliest_info.append(f"• **{ticker}**: Earliest date is {iso}")
                 else:
                     earliest_info.append(f"• **{ticker}**: Could not determine earliest date")
             
@@ -598,15 +618,6 @@ def render_configuration_page():
         
         # Note: Rebalance Strategy is now in main Rebalancing Settings section above
     
-    st.markdown("---")
-    
-    # Run Backtest Button
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        run_button = st.button("🚀 Run Backtest", type="primary", use_container_width=True)
-        if run_button:
-            run_backtest_from_ui()
-    
     # Configuration validation warnings
     warnings = []
     
@@ -629,6 +640,23 @@ def render_configuration_page():
     # Display current config summary
     with st.expander("📋 Configuration Summary (JSON)", expanded=False):
         st.json(config)
+
+
+def render_configuration_page():
+    """Page chrome and run button (full rerun). Config fields live in a fragment."""
+    st.title("⚙️ Configuration")
+    st.markdown(
+        "Adjust settings below — only the configuration panel updates while you edit. "
+        "**Run Backtest** loads data, simulates, and opens results (full run)."
+    )
+    st.markdown("---")
+    render_configuration_editor()
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🚀 Run Backtest", type="primary", use_container_width=True):
+            run_backtest_from_ui()
+
 
 # ======================================================================
 # RUN BACKTEST FUNCTION
@@ -740,6 +768,17 @@ def run_backtest_from_ui():
             rebalance_portfolio,
             dividend_data=dividend_data
         )
+
+        # VIX (index level) for performance summary context — not used in allocation
+        if use_worst_case:
+            equity_df = attach_vix_to_equity_df(equity_df, pd.Series(dtype=float))
+        else:
+            try:
+                vix_s = load_vix_series(config["start_date"], config.get("end_date"))
+                equity_df = attach_vix_to_equity_df(equity_df, vix_s)
+            except Exception as ex:
+                log(f"Warning: could not load VIX for summary column: {ex}")
+                equity_df = attach_vix_to_equity_df(equity_df, pd.Series(dtype=float))
         
         progress_bar.progress(90)
         
@@ -770,6 +809,20 @@ def run_backtest_from_ui():
 # ======================================================================
 # RESULTS PAGE
 # ======================================================================
+@_st_fragment
+def render_results_dashboard():
+    """Charts, tables, and downloads — isolated reruns from sidebar/header."""
+    results = st.session_state.backtest_results
+    if results is None:
+        return
+    render_dashboard(
+        results["equity_df"],
+        results["quarterly_df"],
+        results["config"],
+        dividend_df=results.get("dividend_df", pd.DataFrame()),
+    )
+
+
 def render_results_page():
     """Render the results/dashboard page"""
     
@@ -782,7 +835,7 @@ def render_results_page():
                 st.rerun()
         return
     
-    # Navigation header
+    # Navigation header (full rerun on click — not inside fragment)
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         st.title("📊 Backtest Results")
@@ -795,15 +848,7 @@ def render_results_page():
             run_backtest_from_ui()
     
     st.markdown("---")
-    
-    # Render dashboard
-    results = st.session_state.backtest_results
-    render_dashboard(
-        results['equity_df'],
-        results['quarterly_df'],
-        results['config'],
-        dividend_df=results.get('dividend_df', pd.DataFrame())
-    )
+    render_results_dashboard()
 
 # ======================================================================
 # MAIN APP

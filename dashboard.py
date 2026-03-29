@@ -15,6 +15,7 @@ import numpy as np
 from datetime import datetime
 import io
 from exporter import export_to_excel
+from utils import max_drawdown_from_equity_curve
 
 
 # ======================================================================
@@ -48,11 +49,8 @@ def calculate_metrics(equity_df, config=None):
     
     total_return = (end_val / start_val) - 1
     
-    # Calculate max drawdown
-    equity_series = equity_df["Value"]
-    peak = equity_series.expanding().max()
-    drawdown = (equity_series - peak) / peak
-    max_drawdown = drawdown.min()
+    # Max drawdown: largest % drop from any prior peak to a trough (full simulation)
+    max_drawdown = max_drawdown_from_equity_curve(equity_df["Value"])
     
     # Calculate volatility (annualized)
     returns = equity_df["Value"].pct_change().dropna()
@@ -505,7 +503,7 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
             None,
             delta_color="inverse"
         )
-        st.caption("Worst peak-to-trough")
+        st.caption("Largest % fall from any prior peak (full backtest)")
     
     with secondary_col2:
         st.metric(
@@ -633,6 +631,10 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
     
     # Performance Summary Table
     st.header("📊 Performance Summary")
+    st.caption(
+        "VIX column (when present): CBOE Volatility Index **close** on each date — for context only; "
+        "it is an index, not a portfolio holding, and is **not** used for regime or allocation in this app."
+    )
     drawdown_ticker = config.get("drawdown_ticker", "QQQ") if config else "QQQ"
     ath_col = f"{drawdown_ticker}_ATH_raw"
     try:
@@ -663,6 +665,8 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
     px_col = f"{drawdown_ticker}_price"
     if px_col in display_df.columns and px_col not in key_cols:
         key_cols.append(px_col)
+    if "VIX" in display_df.columns:
+        key_cols.append("VIX")
     
     # Add normalized benchmark columns
     norm_cols = [c for c in equity_df.columns if c.endswith("_norm")]
@@ -720,6 +724,11 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
                 formatted_df[col] = formatted_df[col].apply(
                     lambda x: f"{x:,.4f}" if pd.notna(x) and x != 0 else ""
                 )
+
+        if "VIX" in formatted_df.columns:
+            formatted_df["VIX"] = formatted_df["VIX"].apply(
+                lambda x: f"{x:.2f}" if pd.notna(x) else ""
+            )
         
         return formatted_df
     
@@ -758,6 +767,8 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
             rename_perf[ath_col] = ath_label
         if px_col in formatted_df.columns:
             rename_perf[px_col] = f"{drawdown_ticker} close ($)"
+        if "VIX" in formatted_df.columns:
+            rename_perf["VIX"] = "VIX (index close)"
         if rename_perf:
             formatted_df = formatted_df.rename(columns=rename_perf)
         

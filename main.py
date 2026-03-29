@@ -2,7 +2,7 @@
 
 from config import CONFIG
 from console_ui import *
-from data_loader import load_price_data
+from data_loader import load_price_data, load_vix_series, attach_vix_to_equity_df
 from regime_engine import compute_drawdown_from_ath, determine_regime
 from allocation_engine import get_allocation_for_regime
 from rebalance_engine import rebalance_portfolio
@@ -10,6 +10,7 @@ from backtest import run_backtest
 from exporter import export_to_excel
 from worst_case_runner import run_worst_case_simulation
 import config
+import pandas as pd
 
 
 def run():
@@ -40,6 +41,13 @@ def run():
         lambda dd, cfg: determine_regime(dd, cfg),
         rebalance_portfolio
     )
+
+    try:
+        vix_s = load_vix_series(CONFIG["start_date"], CONFIG.get("end_date"))
+        equity_df = attach_vix_to_equity_df(equity_df, vix_s)
+    except Exception as e:
+        print(f"[LOG] Warning: could not attach VIX column: {e}")
+        equity_df = attach_vix_to_equity_df(equity_df, pd.Series(dtype=float))
 
     print("Backtest complete!")
     print("Final portfolio value:", equity_df["Value"].iloc[-1])

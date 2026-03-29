@@ -2,6 +2,7 @@
 from utils import log
 import yfinance as yf
 from datetime import datetime
+import numpy as np
 import pandas as pd
 
 
@@ -148,3 +149,56 @@ def load_price_data(tickers, start_date, end_date=None, include_dividends=False)
     
     log(f"Dividend data shape: {dividend_df.shape}")
     return closes, dividend_df
+
+
+# Yahoo symbol for the CBOE Volatility Index (index level, not a tradable ETF)
+VIX_YAHOO_SYMBOL = "^VIX"
+
+
+def load_vix_series(start_date, end_date=None):
+    """
+    Daily VIX index close (context / display only — not used for allocation).
+
+    Returns a float Series indexed by date (timezone-naive), or empty Series on failure.
+    """
+    if end_date is None:
+        log(f"Downloading {VIX_YAHOO_SYMBOL} from {start_date} (end: current date)")
+        data = yf.download(VIX_YAHOO_SYMBOL, start=start_date, auto_adjust=True)
+    else:
+        log(f"Downloading {VIX_YAHOO_SYMBOL} from {start_date} to {end_date}")
+        data = yf.download(VIX_YAHOO_SYMBOL, start=start_date, end=end_date, auto_adjust=True)
+
+    if data is None or data.empty:
+        log(f"Warning: no VIX data returned for {VIX_YAHOO_SYMBOL}")
+        return pd.Series(dtype=float)
+
+    closes = data["Close"].dropna(how="all")
+    closes = normalize_close_columns(closes)
+    s = yf_close_to_series(closes, ticker_hint=VIX_YAHOO_SYMBOL)
+    if isinstance(s.index, pd.DatetimeIndex) and s.index.tz is not None:
+        s = s.tz_convert("UTC").tz_localize(None)
+    return s.sort_index()
+
+
+def attach_vix_to_equity_df(equity_df, vix_series):
+    """
+    Align VIX closes to equity_df rows by calendar Date (left join on backtest dates).
+    """
+    if equity_df is None or equity_df.empty:
+        return equity_df
+    out = equity_df.copy()
+    if vix_series is None or len(vix_series) == 0:
+        out["VIX"] = np.nan
+        return out
+
+    vx = vix_series.copy()
+    vx.index = pd.to_datetime(vx.index).normalize()
+    # One value per calendar day (last observation if duplicates)
+    by_day = vx.groupby(vx.index).last()
+
+    d = pd.to_datetime(out["Date"])
+    if getattr(d.dtype, "tz", None) is not None:
+        d = d.dt.tz_convert("UTC").dt.tz_localize(None)
+    d = d.dt.normalize()
+    out["VIX"] = d.map(by_day).astype(float)
+    return out
