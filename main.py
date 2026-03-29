@@ -7,6 +7,7 @@ from data_loader import (
     attach_vix_to_equity_df,
     fetch_vix_series_for_equity_dates,
 )
+from signal_layers import compute_signal_layer_columns, reorder_signal_override_columns_after_signals
 from regime_engine import compute_drawdown_from_ath, determine_regime
 from allocation_engine import get_allocation_for_regime
 from rebalance_engine import rebalance_portfolio
@@ -52,6 +53,9 @@ def run():
     except Exception as e:
         print(f"[LOG] Warning: could not attach ^VIX column: {e}")
         equity_df = attach_vix_to_equity_df(equity_df, pd.Series(dtype=float))
+
+    equity_df = compute_signal_layer_columns(equity_df)
+    equity_df = reorder_signal_override_columns_after_signals(equity_df)
 
     print("Backtest complete!")
     print("Final portfolio value:", equity_df["Value"].iloc[-1])

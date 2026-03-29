@@ -1,7 +1,14 @@
 import pandas as pd
 import numpy as np
 from allocation_engine import get_allocation_for_regime, tradable_allocation
-from data_loader import yf_close_to_series
+from data_loader import yf_close_to_series, load_vix_series
+from signal_layers import build_signal_total_series
+from signal_override_engine import (
+    ensure_regime_signal_overrides,
+    desired_signal_override_mode,
+    get_target_allocation_for_override,
+    describe_signal_override_row,
+)
 from utils import log
 
 
@@ -384,12 +391,17 @@ apply_asymmetric_rules = apply_asymmetric_rules_down_only
 # ------------------------------------------------------------
 def record_missing_row(equity_rows, date, tickers, row_prices, row_norm,
                        shares, portfolio_value, prev_regime, starting_val, dd_cols,
-                       regime_trajectory="", prev_market_regime=None):
+                       regime_trajectory="", prev_market_regime=None,
+                       config=None, signal_override_mode="none"):
 
     # Handle None shares (safety check)
     if shares is None:
         shares = {}
 
+    if config is not None:
+        oa, ol, oalloc = describe_signal_override_row(prev_regime, signal_override_mode, config)
+    else:
+        oa, ol, oalloc = "none", "", ""
     rec = {
         "Date": date,
         "Value": portfolio_value,
@@ -399,6 +411,9 @@ def record_missing_row(equity_rows, date, tickers, row_prices, row_norm,
         "Prev_Market_Regime": prev_market_regime,
         "Rebalanced": "",
         "Pct_Growth": portfolio_value / starting_val - 1,
+        "Signal_override_active": oa,
+        "Signal_override_label": ol,
+        "Signal_override_allocation": oalloc,
         **dd_cols
     }
 
@@ -445,7 +460,8 @@ def record_daily_row(equity_rows, date, tickers, row_prices, row_norm,
                      shares, portfolio_value, market_regime,
                      portfolio_regime, starting_val, rebalanced_flag,
                      dd_cols, cash_balance=0.0, regime_trajectory="",
-                     prev_market_regime=None):
+                     prev_market_regime=None, config=None,
+                     signal_override_mode="none"):
     from utils import log
     
     # Handle None shares
@@ -456,6 +472,11 @@ def record_daily_row(equity_rows, date, tickers, row_prices, row_norm,
     # Include cash in total value
     total_value = portfolio_value + cash_balance
     
+    if config is not None:
+        oa, ol, oalloc = describe_signal_override_row(portfolio_regime, signal_override_mode, config)
+    else:
+        oa, ol, oalloc = "none", "", ""
+
     rec = {
         "Date": date,
         "Value": total_value,
@@ -466,6 +487,9 @@ def record_daily_row(equity_rows, date, tickers, row_prices, row_norm,
         "Prev_Market_Regime": prev_market_regime,
         "Rebalanced": rebalanced_flag,
         "Pct_Growth": total_value / starting_val - 1,
+        "Signal_override_active": oa,
+        "Signal_override_label": ol,
+        "Signal_override_allocation": oalloc,
         **dd_cols
     }
 
@@ -805,6 +829,18 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         historical_dd_full,
     )
 
+    for _rp in (config.get("regimes") or {}).values():
+        ensure_regime_signal_overrides(_rp)
+
+    if "SPY" in price_df.columns:
+        spy_for_signal = price_df["SPY"].astype(float)
+    else:
+        spy_for_signal = pd.Series(np.nan, index=price_df.index, dtype=float)
+    vix_start = (pd.Timestamp(panel_start) - pd.Timedelta(days=400)).strftime("%Y-%m-%d")
+    vix_end = (pd.Timestamp(price_df.index[-1]) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    vix_for_signal = load_vix_series(vix_start, vix_end)
+    signal_total_series = build_signal_total_series(price_df.index, spy_for_signal, vix_for_signal)
+
     rebalance_freq = config.get("rebalance_frequency", "monthly")
     rebalance_dates = get_rebalance_dates(price_df.index, rebalance_freq)
     instant_mode = rebalance_freq == "instant"
@@ -858,6 +894,7 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
     last_rebalance_value = portfolio_value
     quarter_returns = []   # reused as volatility measure for rebalance summary
     prev_market_regime = None  # prior row's market regime (for trajectory + per_regime strategy)
+    signal_override_mode = "none"
 
     # -------------------------
     # MAIN LOOP
@@ -891,6 +928,8 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
                         starting_val, dd_cols,
                         regime_trajectory="",
                         prev_market_regime=prev_market_regime,
+                        config=config,
+                        signal_override_mode=signal_override_mode,
                     )
                     skip_day = True
                     break
@@ -901,10 +940,15 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
                 starting_val, dd_cols,
                 regime_trajectory="",
                 prev_market_regime=prev_market_regime,
+                config=config,
+                signal_override_mode=signal_override_mode,
             )
             skip_day = True
         if skip_day:
             continue
+
+        raw_sig = signal_total_series.loc[date] if date in signal_total_series.index else np.nan
+        s_curr = float(raw_sig) if pd.notna(raw_sig) else np.nan
 
         # -------------------------
         # Dividend handling
@@ -1020,6 +1064,7 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         # -------------------------
         # EXECUTE REBALANCE IF TRIGGERED (tradable weights only; TQQQ→QQQ before TQQQ lists)
         # -------------------------
+        regime_rebalance_executed = False
         if do_rebalance:
             portfolio_value_with_cash = portfolio_value + cash_balance
             alloc_t = tradable_allocation(
@@ -1037,6 +1082,8 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
                     cash_balance = 0.0
                     portfolio_value = portfolio_value_with_cash
                     rebalanced_flag = "Rebalanced"
+                    signal_override_mode = "none"
+                    regime_rebalance_executed = True
 
                     portfolio_value, prev_value = update_portfolio_value(
                         shares, row_prices, prev_value, quarter_returns
@@ -1066,6 +1113,43 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
                     quarter_returns = []
 
         # -------------------------
+        # Signal override rebalance (only when regime did not rebalance today)
+        # -------------------------
+        if not regime_rebalance_executed:
+            rp = config["regimes"][portfolio_regime]
+            ensure_regime_signal_overrides(rp)
+            next_ov = desired_signal_override_mode(s_curr, rp, signal_override_mode)
+            if next_ov != signal_override_mode:
+                portfolio_value_with_cash = portfolio_value + cash_balance
+                alloc_t = tradable_allocation(
+                    get_target_allocation_for_override(portfolio_regime, next_ov, config),
+                    row_prices,
+                    config,
+                )
+                if alloc_t:
+                    new_shares = rebalance_fn(
+                        portfolio_value_with_cash, alloc_t, row_prices
+                    )
+                    if new_shares is not None:
+                        signal_override_mode = next_ov
+                        shares = new_shares
+                        cash_balance = 0.0
+                        portfolio_value = portfolio_value_with_cash
+                        rebalanced_flag = "SignalOverride"
+
+                        portfolio_value, prev_value = update_portfolio_value(
+                            shares, row_prices, prev_value, quarter_returns
+                        )
+                        total_value = portfolio_value
+                        portfolio_ath = max(portfolio_ath, total_value)
+                        portfolio_dd = (
+                            (total_value / portfolio_ath) - 1 if portfolio_ath > 0 else 0
+                        )
+
+                        last_rebalance_value = portfolio_value
+                        quarter_returns = []
+
+        # -------------------------
         # UPDATE VALUE FOR REGULAR DAYS
         # -------------------------
         if not rebalanced_flag:
@@ -1091,6 +1175,8 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
             starting_val, rebalanced_flag, dd_cols, cash_balance,
             regime_trajectory=regime_trajectory,
             prev_market_regime=prev_market_for_row,
+            config=config,
+            signal_override_mode=signal_override_mode,
         )
         prev_market_regime = market_regime
 

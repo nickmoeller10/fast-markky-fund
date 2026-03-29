@@ -7,7 +7,7 @@ def get_allocation_for_regime(regime, config):
     params = config["regimes"][regime]
     invest_tickers = config["allocation_tickers"]
 
-    alloc = {t: params[t] for t in invest_tickers}
+    alloc = {t: float(params.get(t, 0) or 0) for t in invest_tickers}
     return alloc
 
 

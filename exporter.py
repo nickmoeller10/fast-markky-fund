@@ -1,9 +1,40 @@
 import pandas as pd
+import numpy as np
 import xlsxwriter
 import os
 import math
+import json
 
 from utils import max_drawdown_from_equity_curve
+
+
+# ------------------------------------------------------------
+# Excel / xlsxwriter: pandas ``pd.NA`` is not supported in write()
+# ------------------------------------------------------------
+def _excel_scalar(val):
+    """Map pandas missing / NA scalars to None for xlsxwriter; pass through normal values."""
+    if val is None or val is pd.NA:
+        return None
+    if isinstance(val, (float, np.floating)) and (math.isnan(val) or np.isnan(val)):
+        return None
+    try:
+        if pd.api.types.is_scalar(val) and pd.isna(val):
+            return None
+    except TypeError:
+        pass
+    return val
+
+
+def sanitize_dataframe_for_excel(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace ``pd.NA`` / NA in object-like columns so ``to_excel`` / write() do not fail."""
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    for col in out.columns:
+        s = out[col]
+        if s.dtype == object or pd.api.types.is_string_dtype(s):
+            out[col] = s.map(_excel_scalar)
+    return out
 
 
 # ------------------------------------------------------------
@@ -22,10 +53,11 @@ def get_unique_filename(base="backtest_results", ext="xlsx"):
 # Safe cell writer
 # ------------------------------------------------------------
 def safe_write(ws, r, c, val, fmt, fmt_text):
-    if val is None or (isinstance(val, float) and math.isnan(val)):
+    v = _excel_scalar(val)
+    if v is None:
         ws.write(r, c, "", fmt_text)
     else:
-        ws.write(r, c, val, fmt)
+        ws.write(r, c, v, fmt)
 
 
 # ------------------------------------------------------------
@@ -61,6 +93,7 @@ def create_formats(workbook):
 def write_equity_sheet(writer, equity_df, formats, tickers):
 
     sheet_name = "Equity Curve"
+    equity_df = sanitize_dataframe_for_excel(equity_df)
     equity_df.to_excel(writer, sheet_name=sheet_name, index=False)
 
     ws = writer.sheets[sheet_name]
@@ -78,6 +111,23 @@ def write_equity_sheet(writer, equity_df, formats, tickers):
         if ("Pct" in c or "Return" in c or "Vol" in c
             or "Drawdown" in c or "DD" in c)
     ]
+    signal_numeric_cols = [
+        c for c in equity_df.columns
+        if c.startswith(("VIX_", "MACD_", "MA_"))
+        or c in ("Signal_L1", "Signal_L2", "Signal_L3", "Signal_total")
+    ]
+    signal_label_cols = [
+        c for c in equity_df.columns
+        if c
+        in (
+            "VIX_regime_label",
+            "MA_regime_label",
+            "Signal_label",
+            "Signal_override_active",
+            "Signal_override_label",
+            "Signal_override_allocation",
+        )
+    ]
 
     # Header
     for col_num, col_name in enumerate(equity_df.columns):
@@ -92,7 +142,9 @@ def write_equity_sheet(writer, equity_df, formats, tickers):
 
             if col_name == "Date":
                 fmt = formats["date"]
-            elif col_name == "VIX":
+            elif col_name in signal_label_cols:
+                fmt = fmt_text
+            elif col_name == "VIX" or col_name in signal_numeric_cols:
                 fmt = formats["number"]
             elif col_name in percent_cols:
                 fmt = formats["percent"]
@@ -168,6 +220,7 @@ def write_quarterly_sheet(writer, quarterly_df, formats, config):
         return  # no rebalances, nothing to show
 
     sheet_name = "Rebalance Summary"
+    df = sanitize_dataframe_for_excel(df)
     df.to_excel(writer, sheet_name=sheet_name, index=False)
 
     ws = writer.sheets[sheet_name]
@@ -234,7 +287,11 @@ def write_regimes_sheet(writer, config, formats):
     rows = []
     for regime, vals in config["regimes"].items():
         row = {"Regime": regime}
-        row.update(vals)
+        flat = dict(vals)
+        so = flat.get("signal_overrides")
+        if isinstance(so, dict):
+            flat["signal_overrides"] = json.dumps(so)
+        row.update(flat)
         rows.append(row)
 
     df = pd.DataFrame(rows)
@@ -288,6 +345,7 @@ def write_results_sheet(writer, equity_df, formats):
     last.insert(len(last.columns), "Max_Drawdown_Simulation", sim_mdd)
 
     sheet_name = "Results"
+    last = sanitize_dataframe_for_excel(last)
     last.to_excel(writer, sheet_name=sheet_name, index=False)
 
     ws = writer.sheets["Results"]

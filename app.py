@@ -20,11 +20,16 @@ from data_loader import (
     attach_vix_to_equity_df,
     fetch_vix_series_for_equity_dates,
 )
+from signal_layers import compute_signal_layer_columns, reorder_signal_override_columns_after_signals
 from regime_engine import compute_drawdown_from_ath, determine_regime
 from allocation_engine import get_allocation_for_regime
 from rebalance_engine import rebalance_portfolio
 from backtest import run_backtest
 from dashboard import render_dashboard
+from signal_override_engine import (
+    ensure_regime_signal_overrides,
+    default_signal_overrides_block,
+)
 from utils import log
 
 # ======================================================================
@@ -393,6 +398,7 @@ def render_configuration_editor():
                     "dd_high": 1.0,
                     "rebalance_on_downward": "match",
                     "rebalance_on_upward": "match",
+                    "signal_overrides": default_signal_overrides_block(),
                 }
                 
                 # Initialize allocations for all allocation tickers
@@ -431,7 +437,8 @@ def render_configuration_editor():
                     st.caption("(min 1)")
             
             regime = regimes[regime_name]
-            
+            ensure_regime_signal_overrides(regime)
+
             # Ensure all allocation tickers exist in regime
             for ticker in config["allocation_tickers"]:
                 if ticker not in regime:
@@ -469,7 +476,13 @@ def render_configuration_editor():
                         regime[ticker] = 0.0
                 
                 _regime_meta = frozenset(
-                    {"dd_low", "dd_high", "rebalance_on_downward", "rebalance_on_upward"}
+                    {
+                        "dd_low",
+                        "dd_high",
+                        "rebalance_on_downward",
+                        "rebalance_on_upward",
+                        "signal_overrides",
+                    }
                 )
                 # Remove keys that are not allocation tickers or regime metadata
                 tickers_to_remove = [
@@ -541,7 +554,111 @@ def render_configuration_editor():
                     "R1 only receives upward entries from R2+; deepest regime only receives downward entries. "
                     "Equity curve adds **Regime_Trajectory** (Upward/Downward/Flat) vs prior day's **market** regime."
                 )
-            
+
+            with st.expander("📡 Signal overrides", expanded=False):
+                so = regime["signal_overrides"]
+                st.caption(
+                    "Optional overlay on **allocation** only (regime label and drawdown logic unchanged). "
+                    "Each day uses **today’s** Signal_total vs thresholds (above ≥, below ≤; protection wins if both). "
+                    "Rebalances only when the active override **changes**; a regime rebalance clears the override."
+                )
+                st.markdown("**Upside** *(green / opportunistic)*")
+                up = so["upside"]
+                up["enabled"] = st.checkbox(
+                    "Enable upside override",
+                    value=bool(up.get("enabled")),
+                    key=f"{regime_name}_sov_up_en",
+                )
+                up["label"] = st.text_input(
+                    "Upside label",
+                    value=str(up.get("label") or ""),
+                    key=f"{regime_name}_sov_up_lab",
+                )
+                dir_opts = ["above", "below"]
+                ud = str(up.get("direction") or "above")
+                up["direction"] = st.selectbox(
+                    "Upside direction",
+                    options=dir_opts,
+                    index=dir_opts.index(ud) if ud in dir_opts else 0,
+                    key=f"{regime_name}_sov_up_dir",
+                )
+                up["threshold"] = float(
+                    st.slider(
+                        "Upside threshold (−6 … +6, Signal_total)",
+                        -6,
+                        6,
+                        int(round(float(up.get("threshold", 0)))),
+                        key=f"{regime_name}_sov_up_thr",
+                    )
+                )
+                ucols = st.columns(len(config["allocation_tickers"]))
+                up_sum = 0.0
+                for j, ticker in enumerate(config["allocation_tickers"]):
+                    with ucols[j]:
+                        pct = st.number_input(
+                            f"{ticker} %",
+                            min_value=0,
+                            max_value=100,
+                            value=int(round(float(up.get(ticker, 0) or 0) * 100)),
+                            step=1,
+                            key=f"{regime_name}_sov_up_{ticker}",
+                        )
+                        up[ticker] = pct / 100.0
+                        up_sum += up[ticker]
+                if up["enabled"] and abs(up_sum - 1.0) > 0.001:
+                    st.warning(f"Upside allocations sum to {up_sum:.0%}; target 100%.")
+
+                st.markdown("---")
+                st.markdown(
+                    '<p style="margin:0;color:#b91c1c;font-weight:600;">Protection</p>'
+                    '<p style="margin:0.2rem 0 0.6rem;font-size:0.85rem;color:#9a3412;">'
+                    "De-risk sleeve — often use direction <strong>below</strong> threshold.</p>",
+                    unsafe_allow_html=True,
+                )
+                pr = so["protection"]
+                pr["enabled"] = st.checkbox(
+                    "Enable protection override",
+                    value=bool(pr.get("enabled")),
+                    key=f"{regime_name}_sov_pr_en",
+                )
+                pr["label"] = st.text_input(
+                    "Protection label",
+                    value=str(pr.get("label") or ""),
+                    key=f"{regime_name}_sov_pr_lab",
+                )
+                pdv = str(pr.get("direction") or "below")
+                pr["direction"] = st.selectbox(
+                    "Protection direction",
+                    options=dir_opts,
+                    index=dir_opts.index(pdv) if pdv in dir_opts else 1,
+                    key=f"{regime_name}_sov_pr_dir",
+                )
+                pr["threshold"] = float(
+                    st.slider(
+                        "Protection threshold (−6 … +6, Signal_total)",
+                        -6,
+                        6,
+                        int(round(float(pr.get("threshold", 0)))),
+                        key=f"{regime_name}_sov_pr_thr",
+                    )
+                )
+                pcols = st.columns(len(config["allocation_tickers"]))
+                pr_sum = 0.0
+                for j, ticker in enumerate(config["allocation_tickers"]):
+                    with pcols[j]:
+                        pct = st.number_input(
+                            f"{ticker} %",
+                            min_value=0,
+                            max_value=100,
+                            value=int(round(float(pr.get(ticker, 0) or 0) * 100)),
+                            step=1,
+                            key=f"{regime_name}_sov_pr_{ticker}",
+                        )
+                        pr[ticker] = pct / 100.0
+                        pr_sum += pr[ticker]
+                if pr["enabled"] and abs(pr_sum - 1.0) > 0.001:
+                    st.warning(f"Protection allocations sum to {pr_sum:.0%}; target 100%.")
+
             if i < len(regime_names) - 1:  # Don't add separator after last regime
                 st.markdown("---")
     
@@ -728,7 +845,10 @@ def run_backtest_from_ui():
         except Exception as ex:
             log(f"Warning: could not load ^VIX for summary column: {ex}")
             equity_df = attach_vix_to_equity_df(equity_df, pd.Series(dtype=float))
-        
+
+        equity_df = compute_signal_layer_columns(equity_df)
+        equity_df = reorder_signal_override_columns_after_signals(equity_df)
+
         progress_bar.progress(90)
         
         # Step 3: Store results

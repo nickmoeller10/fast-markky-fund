@@ -19,6 +19,109 @@ from utils import max_drawdown_from_equity_curve
 from data_loader import VIX_YAHOO_SYMBOL
 
 
+# Ordered columns appended after core snapshot fields in Performance Summary
+PERF_SIGNAL_COLUMNS_ORDER = [
+    "VIX",
+    "VIX_252d_mean",
+    "VIX_252d_stdev",
+    "VIX_zscore",
+    "VIX_zscore_direction",
+    "VIX_regime_label",
+    "Signal_L1",
+    "MACD_12ema",
+    "MACD_26ema",
+    "MACD_line",
+    "MACD_signal",
+    "MACD_histogram",
+    "MACD_histogram_delta",
+    "Signal_L2",
+    "MA_50",
+    "MA_200",
+    "MA_regime_label",
+    "Signal_L3",
+    "Signal_total",
+    "Signal_label",
+]
+
+PERF_SIGNAL_COLUMN_DISPLAY_NAMES = {
+    "VIX": f"VIX close ({VIX_YAHOO_SYMBOL})",
+    "VIX_252d_mean": "VIX 252d mean",
+    "VIX_252d_stdev": "VIX 252d stdev",
+    "VIX_zscore": "VIX z-score",
+    "VIX_zscore_direction": "VIX z Δ (1d)",
+    "VIX_regime_label": "VIX regime",
+    "Signal_L1": "Signal L1",
+    "MACD_12ema": "MACD 12 EMA",
+    "MACD_26ema": "MACD 26 EMA",
+    "MACD_line": "MACD line",
+    "MACD_signal": "MACD signal",
+    "MACD_histogram": "MACD histogram",
+    "MACD_histogram_delta": "MACD hist Δ",
+    "Signal_L2": "Signal L2",
+    "MA_50": "MA 50",
+    "MA_200": "MA 200",
+    "MA_regime_label": "MA regime",
+    "Signal_L3": "Signal L3",
+    "Signal_total": "Signal total",
+    "Signal_label": "Signal label",
+    "Signal_override_active": "Signal override (active)",
+    "Signal_override_label": "Signal override label",
+    "Signal_override_allocation": "Signal override allocation",
+}
+
+PERFORMANCE_SUMMARY_GUIDE = """
+**VIX / Layer 1**
+| Column | Description |
+|--------|-------------|
+| VIX close | Raw **^VIX** close that day |
+| VIX 252d mean | Rolling 252-day average of VIX — “normal” for that era |
+| VIX 252d stdev | Rolling 252-day stdev — typical VIX variability |
+| VIX z-score | (VIX − mean) / stdev — extremity vs recent history |
+| VIX z Δ (1d) | Today’s z minus yesterday’s — fear rising or falling |
+| VIX regime | Extreme Fear / Elevated / Normal / Complacent / Extreme Complacency |
+| Signal L1 | Score −2…+2 from z-score buckets |
+
+**MACD / Layer 2 (SPY)**
+| Column | Description |
+|--------|-------------|
+| MACD 12 / 26 EMA | Fast / slow EMA of SPY close |
+| MACD line | 12 EMA − 26 EMA |
+| MACD signal | 9-day EMA of MACD line |
+| MACD histogram | Line − signal |
+| MACD hist Δ | Today’s histogram minus yesterday’s |
+| Signal L2 | Score −2…+2 from crossovers, histogram, divergence heuristic |
+
+**50/200 MA / Layer 3 (SPY)**
+| Column | Description |
+|--------|-------------|
+| MA 50 / MA 200 | Simple moving averages of SPY close |
+| MA regime | Golden Cross / Death Cross / Neutral |
+| Signal L3 | Score −2…+2 from MA spread and SPY position |
+
+**Composite**
+| Column | Description |
+|--------|-------------|
+| Signal total | L1 + L2 + L3 (−6…+6) |
+| Signal label | Strong Buy → Strong Sell buckets |
+
+**Signal overrides (allocation overlay)**
+| Column | Description |
+|--------|-------------|
+| Signal override (active) | none / upside / protection — which overlay is active from **today’s** Signal_total vs thresholds (above = score ≥ threshold, below = score ≤ threshold; protection wins if both) |
+| Signal override label | Config label for the active panel |
+| Signal override allocation | Human-readable target weights when an override is active |
+"""
+
+
+def _perf_cell_empty(x) -> bool:
+    if x is None or x is pd.NA:
+        return True
+    try:
+        return bool(pd.isna(x))
+    except (TypeError, ValueError):
+        return False
+
+
 # ======================================================================
 # PAGE CONFIGURATION
 # ======================================================================
@@ -749,8 +852,6 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
     px_col = f"{drawdown_ticker}_price"
     if px_col in display_df.columns and px_col not in key_cols:
         key_cols.append(px_col)
-    if "VIX" in display_df.columns:
-        key_cols.append("VIX")
     
     # Add normalized benchmark columns
     norm_cols = [c for c in equity_df.columns if c.endswith("_norm")]
@@ -761,6 +862,13 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
         key_cols.append("Market_Regime")
     if "Portfolio_Regime" in equity_df.columns:
         key_cols.append("Portfolio_Regime")
+    for _sov in (
+        "Signal_override_active",
+        "Signal_override_label",
+        "Signal_override_allocation",
+    ):
+        if _sov in equity_df.columns and _sov not in key_cols:
+            key_cols.append(_sov)
     if "Regime_Trajectory" in equity_df.columns:
         key_cols.append("Regime_Trajectory")
     if "Prev_Market_Regime" in equity_df.columns:
@@ -773,6 +881,11 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
                 key_cols.append(f"{ticker}_shares")
             if f"{ticker}_value" in equity_df.columns:
                 key_cols.append(f"{ticker}_value")
+
+    # Signal layers + composite (same order as daily export columns at end)
+    for c in PERF_SIGNAL_COLUMNS_ORDER:
+        if c in equity_df.columns and c not in key_cols:
+            key_cols.append(c)
     
     # Filter to only columns that exist
     display_cols = [c for c in key_cols if c in display_df.columns]
@@ -785,7 +898,9 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
         
         # Format percentage columns
         if "Pct_Growth" in formatted_df.columns:
-            formatted_df["Pct_Growth"] = formatted_df["Pct_Growth"].apply(lambda x: f"{x:.2%}" if pd.notna(x) else "")
+            formatted_df["Pct_Growth"] = formatted_df["Pct_Growth"].apply(
+                lambda x: f"{x:.2%}" if not _perf_cell_empty(x) else ""
+            )
         
         # Format dollar columns (incl. drawdown reference ATH and spot prices)
         dollar_cols = ["Value"] + [
@@ -798,7 +913,7 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
         for col in dollar_cols:
             if col in formatted_df.columns:
                 formatted_df[col] = formatted_df[col].apply(
-                    lambda x: f"${x:,.2f}" if pd.notna(x) else ""
+                    lambda x: f"${x:,.2f}" if not _perf_cell_empty(x) else ""
                 )
         
         # Format share columns
@@ -806,13 +921,50 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
         for col in share_cols:
             if col in formatted_df.columns:
                 formatted_df[col] = formatted_df[col].apply(
-                    lambda x: f"{x:,.4f}" if pd.notna(x) and x != 0 else ""
+                    lambda x: f"{x:,.4f}" if not _perf_cell_empty(x) and x != 0 else ""
                 )
 
         if "VIX" in formatted_df.columns:
             formatted_df["VIX"] = formatted_df["VIX"].apply(
-                lambda x: f"{x:.2f}" if pd.notna(x) else ""
+                lambda x: f"{x:.2f}" if not _perf_cell_empty(x) else ""
             )
+        for c in ("VIX_252d_mean", "VIX_252d_stdev"):
+            if c in formatted_df.columns:
+                formatted_df[c] = formatted_df[c].apply(
+                    lambda x: f"{float(x):.3f}" if not _perf_cell_empty(x) else ""
+                )
+        for c in ("VIX_zscore", "VIX_zscore_direction"):
+            if c in formatted_df.columns:
+                formatted_df[c] = formatted_df[c].apply(
+                    lambda x: f"{float(x):.3f}" if not _perf_cell_empty(x) else ""
+                )
+        for c in list(formatted_df.columns):
+            if c.startswith("MACD_"):
+                formatted_df[c] = formatted_df[c].apply(
+                    lambda x: f"{float(x):.4f}" if not _perf_cell_empty(x) else ""
+                )
+        for c in ("MA_50", "MA_200"):
+            if c in formatted_df.columns:
+                formatted_df[c] = formatted_df[c].apply(
+                    lambda x: f"{float(x):.2f}" if not _perf_cell_empty(x) else ""
+                )
+        for c in ("Signal_L1", "Signal_L2", "Signal_L3", "Signal_total"):
+            if c in formatted_df.columns:
+                formatted_df[c] = formatted_df[c].apply(
+                    lambda x: f"{int(round(float(x)))}" if not _perf_cell_empty(x) else ""
+                )
+        for c in (
+            "VIX_regime_label",
+            "MA_regime_label",
+            "Signal_label",
+            "Signal_override_active",
+            "Signal_override_label",
+            "Signal_override_allocation",
+        ):
+            if c in formatted_df.columns:
+                formatted_df[c] = formatted_df[c].apply(
+                    lambda x: "" if _perf_cell_empty(x) else str(x)
+                )
         
         return formatted_df
     
@@ -851,16 +1003,20 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
             rename_perf[ath_col] = ath_label
         if px_col in formatted_df.columns:
             rename_perf[px_col] = f"{drawdown_ticker} close ($)"
-        if "VIX" in formatted_df.columns:
-            rename_perf["VIX"] = f"VIX close ({VIX_YAHOO_SYMBOL})"
+        for col, title in PERF_SIGNAL_COLUMN_DISPLAY_NAMES.items():
+            if col in formatted_df.columns:
+                rename_perf[col] = title
         if rename_perf:
             formatted_df = formatted_df.rename(columns=rename_perf)
+        
+        with st.expander("📖 Performance column guide (VIX / MACD / MA / composite)", expanded=False):
+            st.markdown(PERFORMANCE_SUMMARY_GUIDE)
         
         # Display table with pagination
         st.dataframe(
             formatted_df,
             use_container_width=True,
-            height=400,
+            height=520,
             hide_index=True
         )
         
