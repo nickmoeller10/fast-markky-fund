@@ -32,6 +32,14 @@ def regime_label(num: int) -> str:
     return f"R{num}"
 
 
+def bottom_regime_number(config) -> int:
+    """Largest regime index (e.g. 4 for R4) for asymmetric rules that reference the deepest regime."""
+    keys = list((config or {}).get("regimes") or [])
+    if not keys:
+        return 3
+    return max(regime_number(k) for k in keys)
+
+
 # ------------------------------------------------------------
 # Rebalance date utilities
 # ------------------------------------------------------------
@@ -136,6 +144,43 @@ def compute_rolling_ath_and_dd(series: pd.Series, n_calendar_years: int):
     return ath_series, dd_series
 
 
+def build_regime_signal_drawdown(
+    dd_raw: pd.Series,
+    exec_index: pd.DatetimeIndex,
+    full_index: pd.DatetimeIndex,
+    historical_dd_full: pd.Series | None = None,
+) -> pd.Series:
+    """
+    Drawdown used for regime detection on execution date D: prior trading day's close
+    on full_index (already encoded in dd_raw vs ATH as of that day). First bar in
+    exec_index with no prior row on full_index uses historical_dd_full (last bar
+    strictly before D) if provided, else same-day dd on D. Portfolio trades still
+    size at row_prices on D (daily close as proxy for next-session execution).
+    """
+    s = (
+        dd_raw.reindex(full_index)
+        .replace([np.inf, -np.inf], np.nan)
+        .fillna(0.0)
+        .clip(0.0, 1.0)
+    )
+    out = pd.Series(index=exec_index, dtype=float)
+    for d in exec_index:
+        prev = full_index[full_index < d]
+        if len(prev):
+            out.loc[d] = float(s.loc[prev[-1]])
+        elif historical_dd_full is not None:
+            prev_h = historical_dd_full.index[historical_dd_full.index < d]
+            if len(prev_h):
+                out.loc[d] = float(historical_dd_full.loc[prev_h[-1]])
+            else:
+                pv = s.loc[d] if d in s.index else np.nan
+                out.loc[d] = float(pv) if pd.notna(pv) else 0.0
+        else:
+            pv = s.loc[d] if d in s.index else np.nan
+            out.loc[d] = float(pv) if pd.notna(pv) else 0.0
+    return out
+
+
 def compute_drawdown_from_historical_ath(series, historical_ath_value=None):
     """
     Calculate drawdown using a historical ATH value.
@@ -203,11 +248,11 @@ def apply_asymmetric_rules_down_only(prev_regime, market_regime):
     return prev_regime
 
 
-def apply_asymmetric_rules_up_only(prev_regime, market_regime):
+def apply_asymmetric_rules_up_only(prev_regime, market_regime, bottom_regime_num: int = 3):
     """
     Regime Shift Up Only: Rebalance immediately when market goes UP,
     but hold position when market goes DOWN (except when reaching bottom).
-    When in bottom regime (R3), rebalance on every way up.
+    When in the deepest regime (e.g. R4), rebalance on every way up.
     """
     prev_n = regime_number(prev_regime)
     mkt_n = regime_number(market_regime)
@@ -216,13 +261,11 @@ def apply_asymmetric_rules_up_only(prev_regime, market_regime):
     if mkt_n < prev_n:
         return regime_label(mkt_n)
 
-    # If currently in bottom regime (R3) and market goes up, follow it
-    if prev_n == 3 and mkt_n < 3:
+    if prev_n == bottom_regime_num and mkt_n < bottom_regime_num:
         return regime_label(mkt_n)
 
-    # If market goes to bottom regime (R3), follow it
-    if mkt_n == 3:
-        return "R3"
+    if mkt_n == bottom_regime_num:
+        return regime_label(bottom_regime_num)
 
     # Otherwise hold previous regime (don't follow down)
     return prev_regime
@@ -235,7 +278,75 @@ def apply_always_rebalance(prev_regime, market_regime):
     return market_regime
 
 
-def apply_rebalancing_strategy(prev_regime, market_regime, strategy):
+def regime_trajectory_label(prev_market_regime, market_regime):
+    """
+    Compare today's market regime to the previous trading day's market regime.
+    R1 = lowest drawdown stress (rank 1); higher Rn = deeper drawdown bands.
+    Downward = market worsened (higher R#). Upward = improved (lower R#).
+    """
+    if prev_market_regime is None or market_regime is None:
+        return ""
+    try:
+        pn = regime_number(prev_market_regime)
+        cn = regime_number(market_regime)
+    except (ValueError, TypeError):
+        return ""
+    if cn > pn:
+        return "Downward"
+    if cn < pn:
+        return "Upward"
+    return "Flat"
+
+
+def _regime_rebalance_mode(regime_params, direction: str) -> str:
+    """
+    direction: 'downward' | 'upward'
+    Returns 'match' (adopt market regime allocation) or 'hold' (keep prior portfolio regime).
+    """
+    key = "rebalance_on_downward" if direction == "downward" else "rebalance_on_upward"
+    raw = regime_params.get(key, "match")
+    if raw is None:
+        return "match"
+    s = str(raw).strip().lower()
+    if s in ("hold", "ignore", "no", "false"):
+        return "hold"
+    return "match"
+
+
+def apply_per_regime_direction_strategy(
+    portfolio_regime, prev_market_regime, market_regime, config
+):
+    """
+    When the market regime *changes* from prev_market_regime to market_regime,
+    decide whether portfolio_regime updates to market_regime using the *target*
+    regime's rebalance_on_downward / rebalance_on_upward ('match' | 'hold').
+    Missing keys default to 'match'. First day (prev None): align with market.
+    """
+    if market_regime is None:
+        return portfolio_regime
+    if prev_market_regime is None:
+        return market_regime
+    if prev_market_regime == market_regime:
+        return portfolio_regime
+
+    try:
+        pn = regime_number(prev_market_regime)
+        cn = regime_number(market_regime)
+    except (ValueError, TypeError):
+        return market_regime
+
+    regimes = config.get("regimes") or {}
+    target_params = regimes.get(market_regime, {})
+    if cn > pn:
+        mode = _regime_rebalance_mode(target_params, "downward")
+    else:
+        mode = _regime_rebalance_mode(target_params, "upward")
+    if mode == "match":
+        return market_regime
+    return portfolio_regime
+
+
+def apply_rebalancing_strategy(prev_regime, market_regime, strategy, config=None):
     """
     Apply the specified rebalancing strategy.
     
@@ -243,14 +354,20 @@ def apply_rebalancing_strategy(prev_regime, market_regime, strategy):
         prev_regime: Current portfolio regime
         market_regime: Current market regime
         strategy: "down_only", "up_only", or "always"
+        config: Optional config dict (used for deepest regime index in up_only)
     
     Returns:
         New portfolio regime based on strategy
     """
+    bottom_n = bottom_regime_number(config) if config is not None else 3
+    if strategy == "per_regime":
+        # Caller should use apply_per_regime_direction_strategy with prev_market_regime;
+        # this branch is a fallback if mis-invoked.
+        return apply_always_rebalance(prev_regime, market_regime)
     if strategy == "down_only":
         return apply_asymmetric_rules_down_only(prev_regime, market_regime)
     elif strategy == "up_only":
-        return apply_asymmetric_rules_up_only(prev_regime, market_regime)
+        return apply_asymmetric_rules_up_only(prev_regime, market_regime, bottom_n)
     elif strategy == "always":
         return apply_always_rebalance(prev_regime, market_regime)
     else:
@@ -266,7 +383,8 @@ apply_asymmetric_rules = apply_asymmetric_rules_down_only
 # Recording helpers
 # ------------------------------------------------------------
 def record_missing_row(equity_rows, date, tickers, row_prices, row_norm,
-                       shares, portfolio_value, prev_regime, starting_val, dd_cols):
+                       shares, portfolio_value, prev_regime, starting_val, dd_cols,
+                       regime_trajectory="", prev_market_regime=None):
 
     # Handle None shares (safety check)
     if shares is None:
@@ -277,6 +395,8 @@ def record_missing_row(equity_rows, date, tickers, row_prices, row_norm,
         "Value": portfolio_value,
         "Market_Regime": None,
         "Portfolio_Regime": prev_regime,
+        "Regime_Trajectory": regime_trajectory,
+        "Prev_Market_Regime": prev_market_regime,
         "Rebalanced": "",
         "Pct_Growth": portfolio_value / starting_val - 1,
         **dd_cols
@@ -324,7 +444,8 @@ def update_portfolio_value(shares, row_prices, prev_value, quarter_returns):
 def record_daily_row(equity_rows, date, tickers, row_prices, row_norm,
                      shares, portfolio_value, market_regime,
                      portfolio_regime, starting_val, rebalanced_flag,
-                     dd_cols, cash_balance=0.0):
+                     dd_cols, cash_balance=0.0, regime_trajectory="",
+                     prev_market_regime=None):
     from utils import log
     
     # Handle None shares
@@ -341,6 +462,8 @@ def record_daily_row(equity_rows, date, tickers, row_prices, row_norm,
         "Cash": cash_balance,
         "Market_Regime": market_regime,
         "Portfolio_Regime": portfolio_regime,
+        "Regime_Trajectory": regime_trajectory,
+        "Prev_Market_Regime": prev_market_regime,
         "Rebalanced": rebalanced_flag,
         "Pct_Growth": total_value / starting_val - 1,
         **dd_cols
@@ -399,7 +522,9 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         drawdown_window_years = int(config.get("drawdown_window_years", 5))
     except (TypeError, ValueError):
         drawdown_window_years = 5
-    
+
+    deepest_regime_n = bottom_regime_number(config)
+
     # Dividend reinvestment settings
     dividend_reinvestment = config.get("dividend_reinvestment", False)
     dividend_target = config.get("dividend_reinvestment_target", "cash")
@@ -508,7 +633,13 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
     
     if historical_dd_full is not None and pre_portfolio_start_date is not None:
         log(f"Running pre-portfolio simulation from {pre_portfolio_start_date} to {panel_start} (holding cash, tracking regimes)...")
-        
+        hist_regime_dd = build_regime_signal_drawdown(
+            historical_dd_full,
+            historical_dd_full.index,
+            historical_dd_full.index,
+            None,
+        )
+
         portfolio_start_ts = pd.to_datetime(panel_start)
         # Get all dates from historical data up to (and including if available) portfolio start
         pre_portfolio_dates = historical_dd_full.index[
@@ -526,70 +657,66 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         # Track regime through pre-portfolio period
         current_portfolio_regime = None
         rebalance_strategy = config.get("rebalance_strategy", "down_only")
-        
+        prev_mkt_pre = None
+
         for pre_date in pre_portfolio_dates:
-            pre_dd = _scalar_drawdown_for_regime(historical_dd_full.loc[pre_date])
+            pre_dd = _scalar_drawdown_for_regime(hist_regime_dd.loc[pre_date])
             market_regime = regime_detector(pre_dd, config)
             
             if market_regime is not None:
-                # Apply rebalancing strategy to determine portfolio regime
                 if current_portfolio_regime is None:
                     current_portfolio_regime = market_regime
+                elif rebalance_strategy == "per_regime":
+                    current_portfolio_regime = apply_per_regime_direction_strategy(
+                        current_portfolio_regime, prev_mkt_pre, market_regime, config
+                    )
+                elif rebalance_strategy == "down_only":
+                    current_portfolio_regime = apply_asymmetric_rules_down_only(
+                        current_portfolio_regime, market_regime
+                    )
+                elif rebalance_strategy == "up_only":
+                    current_portfolio_regime = apply_asymmetric_rules_up_only(
+                        current_portfolio_regime, market_regime, deepest_regime_n
+                    )
+                elif rebalance_strategy == "always":
+                    current_portfolio_regime = apply_always_rebalance(
+                        current_portfolio_regime, market_regime
+                    )
                 else:
-                    # Apply rebalancing strategy
-                    if rebalance_strategy == "down_only":
-                        current_portfolio_regime = apply_asymmetric_rules_down_only(current_portfolio_regime, market_regime)
-                    elif rebalance_strategy == "up_only":
-                        current_portfolio_regime = apply_asymmetric_rules_up_only(current_portfolio_regime, market_regime)
-                    elif rebalance_strategy == "always":
-                        current_portfolio_regime = apply_always_rebalance(current_portfolio_regime, market_regime)
-                    else:
-                        current_portfolio_regime = market_regime
+                    current_portfolio_regime = market_regime
+                prev_mkt_pre = market_regime
         
-        # Get final regime at portfolio start
-        # Try to get drawdown at portfolio start date, or use the last pre-portfolio date
-        if portfolio_start_ts in historical_dd_full.index:
-            portfolio_start_dd = _scalar_drawdown_for_regime(
-                historical_dd_full.loc[portfolio_start_ts]
-            )
-            market_regime_at_start = regime_detector(portfolio_start_dd, config)
-        elif len(pre_portfolio_dates) > 0:
-            # Use the last available date before portfolio start
-            final_pre_date = pre_portfolio_dates[-1]
-            portfolio_start_dd = _scalar_drawdown_for_regime(
-                historical_dd_full.loc[final_pre_date]
-            )
-            market_regime_at_start = regime_detector(portfolio_start_dd, config)
-        else:
-            # Fallback: calculate drawdown from price_data for start date
-            if panel_start in price_data.index and drawdown_ticker in price_data.columns:
-                start_price = price_data[drawdown_ticker].loc[panel_start]
-                if pd.notna(start_price) and historical_ath_full is not None:
-                    # Use historical ATH to calculate drawdown
-                    portfolio_start_ts = pd.to_datetime(panel_start)
-                    historical_ath_before = historical_ath_full[historical_ath_full.index < portfolio_start_ts]
-                    if len(historical_ath_before) > 0:
-                        max_ath = float(historical_ath_before.max())
-                        first_dd = (max_ath - float(start_price)) / max_ath if max_ath > 0 else 0.0
-                    else:
-                        first_dd = 0.0
-                else:
-                    first_dd = 0.0
-            else:
-                first_dd = 0.0
-            market_regime_at_start = regime_detector(first_dd, config)
-        
+        # Regime for first trade session: prior close vs ATH (not same-bar as open prices)
+        open_signal_dd = build_regime_signal_drawdown(
+            historical_dd_full,
+            pd.DatetimeIndex([portfolio_start_ts]),
+            historical_dd_full.index,
+            None,
+        ).iloc[0]
+        market_regime_at_start = regime_detector(
+            _scalar_drawdown_for_regime(open_signal_dd), config
+        )
+
         # Determine portfolio regime at start
         if current_portfolio_regime is None:
             portfolio_regime_at_start = market_regime_at_start
         else:
-            # Apply rebalancing strategy one more time for the start date
-            if rebalance_strategy == "down_only":
-                portfolio_regime_at_start = apply_asymmetric_rules_down_only(current_portfolio_regime, market_regime_at_start)
+            if rebalance_strategy == "per_regime":
+                portfolio_regime_at_start = apply_per_regime_direction_strategy(
+                    current_portfolio_regime, prev_mkt_pre, market_regime_at_start, config
+                )
+            elif rebalance_strategy == "down_only":
+                portfolio_regime_at_start = apply_asymmetric_rules_down_only(
+                    current_portfolio_regime, market_regime_at_start
+                )
             elif rebalance_strategy == "up_only":
-                portfolio_regime_at_start = apply_asymmetric_rules_up_only(current_portfolio_regime, market_regime_at_start)
+                portfolio_regime_at_start = apply_asymmetric_rules_up_only(
+                    current_portfolio_regime, market_regime_at_start, deepest_regime_n
+                )
             elif rebalance_strategy == "always":
-                portfolio_regime_at_start = apply_always_rebalance(current_portfolio_regime, market_regime_at_start)
+                portfolio_regime_at_start = apply_always_rebalance(
+                    current_portfolio_regime, market_regime_at_start
+                )
             else:
                 portfolio_regime_at_start = market_regime_at_start
         
@@ -671,6 +798,13 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
     )
     ath_raw = ath_raw.reindex(price_data.index)
 
+    regime_dd_signal = build_regime_signal_drawdown(
+        dd_raw,
+        price_df.index,
+        price_data.index,
+        historical_dd_full,
+    )
+
     rebalance_freq = config.get("rebalance_frequency", "monthly")
     rebalance_dates = get_rebalance_dates(price_df.index, rebalance_freq)
     instant_mode = rebalance_freq == "instant"
@@ -694,8 +828,8 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         shares = rebalance_fn(config["starting_balance"], alloc_t, price_df.loc[panel_start])
         log(f"Initial rebalance on {panel_start} into {portfolio_regime} with tradable allocation: {alloc_t}")
     else:
-        # Fallback: calculate regime from first trade day's drawdown
-        first_dd = dd_raw.loc[panel_start]
+        # Fallback: regime from prior close (or same bar if no history on full index)
+        first_dd = float(regime_dd_signal.loc[panel_start])
         market_regime, portfolio_regime, shares = get_initial_allocation(
             panel_start, price_df, first_dd, config, regime_detector, rebalance_fn
         )
@@ -723,6 +857,7 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
 
     last_rebalance_value = portfolio_value
     quarter_returns = []   # reused as volatility measure for rebalance summary
+    prev_market_regime = None  # prior row's market regime (for trajectory + per_regime strategy)
 
     # -------------------------
     # MAIN LOOP
@@ -753,7 +888,9 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
                     record_missing_row(
                         equity_rows, date, tickers, row_prices, row_norm,
                         shares, portfolio_value, portfolio_regime,
-                        starting_val, dd_cols
+                        starting_val, dd_cols,
+                        regime_trajectory="",
+                        prev_market_regime=prev_market_regime,
                     )
                     skip_day = True
                     break
@@ -761,7 +898,9 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
             record_missing_row(
                 equity_rows, date, tickers, row_prices, row_norm,
                 shares, portfolio_value, portfolio_regime,
-                starting_val, dd_cols
+                starting_val, dd_cols,
+                regime_trajectory="",
+                prev_market_regime=prev_market_regime,
             )
             skip_day = True
         if skip_day:
@@ -833,9 +972,12 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
                 log(f"Portfolio value updated after dividend reinvestment: ${portfolio_value:,.2f}")
 
         # -------------------------
-        # Regime detection
+        # Regime detection (prior session close; execution uses row_prices today)
         # -------------------------
-        market_regime = regime_detector(raw_dd, config)
+        market_regime = regime_detector(float(regime_dd_signal.loc[date]), config)
+        regime_trajectory = regime_trajectory_label(prev_market_regime, market_regime)
+        prev_market_for_row = prev_market_regime
+
         new_regime = portfolio_regime
         do_rebalance = False
         rebalanced_flag = ""
@@ -849,7 +991,14 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         # INSTANT MODE (rebalance whenever regime changes)
         # -------------------------
         if instant_mode:
-            new_regime = apply_rebalancing_strategy(portfolio_regime, market_regime, rebalance_strategy)
+            if rebalance_strategy == "per_regime":
+                new_regime = apply_per_regime_direction_strategy(
+                    portfolio_regime, prev_market_regime, market_regime, config
+                )
+            else:
+                new_regime = apply_rebalancing_strategy(
+                    portfolio_regime, market_regime, rebalance_strategy, config
+                )
             do_rebalance = new_regime != portfolio_regime
 
         # -------------------------
@@ -857,8 +1006,16 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         # -------------------------
         else:
             if date in rebalance_dates:
-                new_regime = apply_rebalancing_strategy(portfolio_regime, market_regime, rebalance_strategy)
-                do_rebalance = True
+                if rebalance_strategy == "per_regime":
+                    new_regime = apply_per_regime_direction_strategy(
+                        portfolio_regime, prev_market_regime, market_regime, config
+                    )
+                    do_rebalance = new_regime != portfolio_regime
+                else:
+                    new_regime = apply_rebalancing_strategy(
+                        portfolio_regime, market_regime, rebalance_strategy, config
+                    )
+                    do_rebalance = True
 
         # -------------------------
         # EXECUTE REBALANCE IF TRIGGERED (tradable weights only; TQQQ→QQQ before TQQQ lists)
@@ -893,6 +1050,8 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
                         "Portfolio_Value": portfolio_value,
                         "Market_Regime": market_regime,
                         "Portfolio_Regime": portfolio_regime,
+                        "Regime_Trajectory": regime_trajectory,
+                        "Prev_Market_Regime": prev_market_for_row,
                         "QoQ_Return": (portfolio_value / last_rebalance_value) - 1,
                         "QoQ_Volatility": pd.Series(quarter_returns).std() if len(quarter_returns) else 0,
                         f"{drawdown_ticker}_ATH_raw": raw_ath,
@@ -929,8 +1088,11 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         record_daily_row(
             equity_rows, date, tickers, row_prices, row_norm, shares,
             portfolio_value, market_regime, portfolio_regime,
-            starting_val, rebalanced_flag, dd_cols, cash_balance
+            starting_val, rebalanced_flag, dd_cols, cash_balance,
+            regime_trajectory=regime_trajectory,
+            prev_market_regime=prev_market_for_row,
         )
+        prev_market_regime = market_regime
 
     # -------------------------
     # BUILD DATAFRAMES

@@ -243,6 +243,7 @@ def create_regime_timeline(equity_df):
         "R1": "#00CC00",  # Green
         "R2": "#FF9900",  # Orange
         "R3": "#CC0000",  # Red
+        "R4": "#6600CC",  # Purple
     }
     
     # Create regime segments
@@ -672,6 +673,10 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
         key_cols.append("Market_Regime")
     if "Portfolio_Regime" in equity_df.columns:
         key_cols.append("Portfolio_Regime")
+    if "Regime_Trajectory" in equity_df.columns:
+        key_cols.append("Regime_Trajectory")
+    if "Prev_Market_Regime" in equity_df.columns:
+        key_cols.append("Prev_Market_Regime")
     
     # Add shares and values for allocation tickers
     if config and "allocation_tickers" in config:
@@ -823,10 +828,21 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
         
         with col2:
             st.subheader("Regimes")
+            alloc_tickers = config.get("allocation_tickers", [])
             for regime, params in config.get("regimes", {}).items():
                 st.write(f"**{regime}:** {params.get('dd_low', 0):.0%} - {params.get('dd_high', 0):.0%} DD")
-                alloc_str = ", ".join([f"{k}: {v:.0%}" for k, v in params.items() if k not in ['dd_low', 'dd_high']])
-                st.write(f"  Allocation: {alloc_str}")
+                alloc_str = ", ".join(
+                    f"{t}: {float(params.get(t, 0)):.0%}"
+                    for t in alloc_tickers
+                    if t in params
+                )
+                reb_parts = []
+                if params.get("rebalance_on_downward") is not None:
+                    reb_parts.append(f"↓ {params['rebalance_on_downward']}")
+                if params.get("rebalance_on_upward") is not None:
+                    reb_parts.append(f"↑ {params['rebalance_on_upward']}")
+                reb_suffix = f"  |  {', '.join(reb_parts)}" if reb_parts else ""
+                st.write(f"  Allocation: {alloc_str}{reb_suffix}")
     
     # Data Export
     st.markdown("---")

@@ -252,7 +252,10 @@ def write_regimes_sheet(writer, config, formats):
         for c, name in enumerate(df.columns):
             val = row[name]
 
-            if name == "Regime":
+            if name == "Regime" or name in (
+                "rebalance_on_downward",
+                "rebalance_on_upward",
+            ) or isinstance(val, str):
                 fmt = formats["text"]
             else:
                 fmt = formats["percent"]

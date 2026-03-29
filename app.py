@@ -37,43 +37,58 @@ if 'config' not in st.session_state:
     # Default configuration
     st.session_state.config = {
         "starting_balance": 10000,
-        "start_date": "2010-12-02",
-        "end_date": None,  # None = current date
+        "start_date": "1999-01-04",
+        "end_date": "2026-03-27",
         "drawdown_ticker": "QQQ",
         "rebalance_frequency": "instant",
         "rebalance_holiday_rule": "next_trading_day",
-        "rebalance_strategy": "down_only",  # Options: "down_only", "up_only", "always"
-        "dividend_reinvestment": False,  # Enable dividend reinvestment
-        "dividend_reinvestment_target": "cash",  # Options: "cash" or ticker symbol
+        "rebalance_strategy": "per_regime",
+        "dividend_reinvestment": False,
+        "dividend_reinvestment_target": "cash",
         "tickers": ["QQQ", "TQQQ", "XLU", "SPY"],
         "allocation_tickers": ["QQQ", "TQQQ", "XLU"],
-        "minimum_allocation": 0.00,
+        "minimum_allocation": 0.0,
         "regimes": {
             "R1": {
                 "dd_low": 0.00,
-                "dd_high": 0.06,
+                "dd_high": 0.04,
                 "TQQQ": 1.00,
                 "QQQ": 0.00,
                 "XLU": 0.00,
+                "rebalance_on_downward": "match",
+                "rebalance_on_upward": "match",
             },
             "R2": {
-                "dd_low": 0.06,
+                "dd_low": 0.04,
                 "dd_high": 0.28,
                 "TQQQ": 0.00,
                 "QQQ": 0.00,
                 "XLU": 1.00,
+                "rebalance_on_downward": "match",
+                "rebalance_on_upward": "hold",
             },
             "R3": {
-                "dd_low": 0.28,
-                "dd_high": 1.00,
+                "dd_low": 0.25,
+                "dd_high": 0.30,
                 "TQQQ": 1.00,
                 "QQQ": 0.00,
                 "XLU": 0.00,
+                "rebalance_on_downward": "hold",
+                "rebalance_on_upward": "match",
+            },
+            "R4": {
+                "dd_low": 0.30,
+                "dd_high": 1.00,
+                "TQQQ": 0.00,
+                "QQQ": 0.00,
+                "XLU": 1.00,
+                "rebalance_on_downward": "match",
+                "rebalance_on_upward": "match",
             },
         },
-        "use_worst_case_simulation": False,
-        "drawdown_window_enabled": False,
-        "drawdown_window_years": 5,
+        "use_worst_case_simulation": True,
+        "drawdown_window_enabled": True,
+        "drawdown_window_years": 2,
     }
 
 if 'backtest_results' not in st.session_state:
@@ -171,11 +186,18 @@ def render_configuration_page():
                 config["end_date"] = None
     
     # Simulated Scenario (pre QQQ)
-    with st.expander("🔮 Simulated Scenario (pre QQQ)", expanded=False):
+    with st.expander("🔮 Simulated scenario (QQQ & TQQQ from ^IXIC)", expanded=True):
         use_worst_case = st.checkbox(
-            "Enable Simulated Scenario (pre QQQ)",
-            value=config.get("use_worst_case_simulation", False),
-            help="Use simulated QQQ and TQQQ data based on NASDAQ Composite (^IXIC) dating back to 1985. Your start/end dates will be respected."
+            "Enable simulated QQQ & TQQQ (NASDAQ Composite)",
+            value=bool(config.get("use_worst_case_simulation", True)),
+            help=(
+                "When on: **QQQ** and **TQQQ** price series are not downloaded from Yahoo for the backtest. "
+                "Instead they are built from **NASDAQ Composite (^IXIC)**: a synthetic QQQ track from daily index returns, "
+                "and **TQQQ** as approximately **3× daily leveraged** QQQ (same methodology as the simulator module). "
+                "That lets you start in 1999 (or back to 1985) with both names populated. "
+                "**XLU, SPY, and other tickers stay real Yahoo data** from their actual listing dates. "
+                "Turn off to use live **QQQ** and **TQQQ** only (TQQQ missing before ~2010 → QQQ proxy in code)."
+            ),
         )
         config["use_worst_case_simulation"] = use_worst_case
         
@@ -195,13 +217,15 @@ def render_configuration_page():
                 if earliest_date:
                     ticker_earliest_dates[ticker] = earliest_date
             
-            st.info(f"""
-            **What this does:**
-            - **QQQ** is entirely simulated from NASDAQ Composite (^IXIC) dating back to 1985-02-01
-            - **TQQQ** is simulated as 3x leveraged QQQ (also from 1985-02-01)
-            - **Your start and end dates will be respected** - the simulation uses your specified date range
-            - QQQ and TQQQ are NOT limited by their real inception dates (1999/2010) - they use NASDAQ Composite simulation
-            - Other tickers (like XLU) will use real data from their inception dates
+            st.info("""
+            **What is simulated (when this is enabled)**
+
+            - **QQQ** — Synthetic daily series from **^IXIC** (NASDAQ Composite) back to **1985-02-01**, scaled to behave like a Nasdaq-100–style equity index (not official QQQ history).
+            - **TQQQ** — **3× daily leveraged** version of that synthetic QQQ path (ProShares-style daily reset leverage, not a guarantee of matching live TQQQ after 2010).
+            - **Start/end dates** you set above filter the combined panel; the simulator fills QQQ/TQQQ for the whole range.
+            - **All other tickers** (e.g. **XLU**, **SPY**) are **real Yahoo Finance** closes and only exist from each ticker’s actual inception.
+
+            **Why use it:** Real **TQQQ** did not trade until **~2010**; without simulation, pre-2010 R1 targets **TQQQ** but the engine holds **QQQ** as a proxy. With simulation, both symbols have prices so allocations can follow the regime weights.
             """)
             
             st.markdown("**📅 Fund Availability Dates:**")
@@ -228,7 +252,11 @@ def render_configuration_page():
                 st.info(f"ℹ️ **Note**: Other tickers (like XLU) have real data starting from **{earliest_other.strftime('%Y-%m-%d')}**. If your start date is before this, those tickers won't have data until their inception dates. QQQ and TQQQ are simulated from 1985, so they'll have data for your entire date range.")
             else:
                 st.success(f"✅ **Note**: No other tickers in your portfolio. QQQ and TQQQ are simulated from 1985, so you can use any date range starting from 1985-02-01.")
-    
+        else:
+            st.caption(
+                "Using **live Yahoo** closes for QQQ and TQQQ. Before TQQQ existed (~2010), targets that call for TQQQ are implemented with **QQQ** as a proxy."
+            )
+
     # Rebalancing Settings
     with st.expander("🔄 Rebalancing Settings", expanded=True):
         col1, col2, col3 = st.columns(3)
@@ -251,16 +279,18 @@ def render_configuration_page():
             )
         
         with col3:
-            strategy_options = ["down_only", "up_only", "always"]
+            strategy_options = ["down_only", "up_only", "always", "per_regime"]
             strategy_labels = {
                 "down_only": "Regime Shift Down Only",
                 "up_only": "Regime Shift Up Only",
-                "always": "Always"
+                "always": "Always (follow market regime)",
+                "per_regime": "Per-regime direction (see each regime below)",
             }
             strategy_descriptions = {
                 "down_only": "Rebalance when market goes DOWN, hold on partial recoveries",
                 "up_only": "Rebalance when market goes UP, hold on declines",
-                "always": "Rebalance whenever regime changes"
+                "always": "Rebalance whenever regime changes",
+                "per_regime": "When the market enters a regime, match or hold based on that regime's Up/Down setting.",
             }
             
             current_strategy = config.get("rebalance_strategy", "down_only")
@@ -283,7 +313,7 @@ def render_configuration_page():
         with dw_a:
             config["drawdown_window_enabled"] = st.checkbox(
                 "Rolling drawdown window (vs. standard ATH)",
-                value=bool(config.get("drawdown_window_enabled", False)),
+                value=bool(config.get("drawdown_window_enabled", True)),
                 help="When enabled, the reference peak is the highest close over the trailing N calendar years. "
                      "Until N full years of history exist for the drawdown ticker, standard ATH (cummax) is used. "
                      "Full ticker history is still downloaded for pre-portfolio simulation and future use.",
@@ -294,7 +324,7 @@ def render_configuration_page():
                     st.number_input(
                         "Window length (calendar years)",
                         min_value=1,
-                        value=max(1, int(config.get("drawdown_window_years", 5))),
+                        value=max(1, int(config.get("drawdown_window_years", 2))),
                         step=1,
                         help="Integer number of calendar years in the trailing peak window.",
                     )
@@ -306,9 +336,9 @@ def render_configuration_page():
         
         with col1:
             config["dividend_reinvestment"] = st.checkbox(
-                "Enable Dividend Reinvestment",
-                value=config.get("dividend_reinvestment", False),
-                help="If enabled, dividends will be reinvested according to the target setting"
+                "Enable dividend handling",
+                value=config.get("dividend_reinvestment", True),
+                help="Accrue dividends per target. 'cash' sweeps into the next rebalance with portfolio value.",
             )
         
         with col2:
@@ -327,7 +357,7 @@ def render_configuration_page():
                     "Reinvestment Target",
                     options=dividend_options,
                     index=target_index,
-                    help="Choose where to reinvest dividends. 'cash' will hold dividends until next rebalance."
+                    help="Cash: dividends sit in cash_balance until the next rebalance, then deploy with full notional into regime weights."
                 )
                 config["dividend_reinvestment_target"] = selected_target
                 
@@ -389,6 +419,8 @@ def render_configuration_page():
                 new_regime = {
                     "dd_low": 0.0,
                     "dd_high": 1.0,
+                    "rebalance_on_downward": "match",
+                    "rebalance_on_upward": "match",
                 }
                 
                 # Initialize allocations for all allocation tickers
@@ -464,10 +496,21 @@ def render_configuration_page():
                     if ticker not in regime:
                         regime[ticker] = 0.0
                 
-                # Remove tickers that are no longer in allocation_tickers
-                tickers_to_remove = [t for t in regime.keys() if t not in config["allocation_tickers"] and t not in ["dd_low", "dd_high"]]
+                _regime_meta = frozenset(
+                    {"dd_low", "dd_high", "rebalance_on_downward", "rebalance_on_upward"}
+                )
+                # Remove keys that are not allocation tickers or regime metadata
+                tickers_to_remove = [
+                    t
+                    for t in regime.keys()
+                    if t not in config["allocation_tickers"] and t not in _regime_meta
+                ]
                 for t in tickers_to_remove:
                     del regime[t]
+                if "rebalance_on_downward" not in regime:
+                    regime["rebalance_on_downward"] = "match"
+                if "rebalance_on_upward" not in regime:
+                    regime["rebalance_on_upward"] = "match"
                 
                 if len(config["allocation_tickers"]) > 0:
                     alloc_cols = st.columns(len(config["allocation_tickers"]))
@@ -494,6 +537,38 @@ def render_configuration_page():
                         st.success(f"✓ Total: {total_alloc:.0%}")
                 else:
                     st.warning("⚠️ No allocation tickers configured")
+
+                st.markdown("**Rebalance when market enters this regime** (used if strategy is *Per-regime direction*)")
+                rc1, rc2 = st.columns(2)
+                dir_opts = ["match", "hold"]
+                dir_labels = {
+                    "match": "Match — adopt this regime's allocation",
+                    "hold": "Hold — keep prior portfolio regime",
+                }
+                with rc1:
+                    regime["rebalance_on_downward"] = st.selectbox(
+                        "From worse stress (downward move into this regime)",
+                        options=dir_opts,
+                        index=dir_opts.index(regime.get("rebalance_on_downward", "match"))
+                        if regime.get("rebalance_on_downward", "match") in dir_opts
+                        else 0,
+                        format_func=lambda x: dir_labels[x],
+                        key=f"{regime_name}_reb_down",
+                    )
+                with rc2:
+                    regime["rebalance_on_upward"] = st.selectbox(
+                        "From better conditions (upward move into this regime)",
+                        options=dir_opts,
+                        index=dir_opts.index(regime.get("rebalance_on_upward", "match"))
+                        if regime.get("rebalance_on_upward", "match") in dir_opts
+                        else 0,
+                        format_func=lambda x: dir_labels[x],
+                        key=f"{regime_name}_reb_up",
+                    )
+                st.caption(
+                    "R1 only receives upward entries from R2+; deepest regime only receives downward entries. "
+                    "Equity curve adds **Regime_Trajectory** (Upward/Downward/Flat) vs prior day's **market** regime."
+                )
             
             if i < len(regime_names) - 1:  # Don't add separator after last regime
                 st.markdown("---")
@@ -737,7 +812,7 @@ def main():
     """Main application entry point"""
     
     # Header at top of page
-    st.header("My name is Nick and I suck at investing.")
+    st.header("Back Test Simulation")
     st.markdown("---")
     
     # Sidebar navigation
