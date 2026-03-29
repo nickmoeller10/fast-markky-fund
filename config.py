@@ -74,7 +74,7 @@ CONFIG = {
             "rebalance_on_upward": "hold",
         },
         "R3": {
-            "dd_low": 0.25,
+            "dd_low": 0.28,
             "dd_high": 0.30,
             "TQQQ": 1.00,
             "QQQ": 0.00,

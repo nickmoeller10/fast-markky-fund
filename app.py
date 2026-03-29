@@ -5,6 +5,7 @@
 # Main entry point - fully UI-driven configuration and backtesting
 # ======================================================================
 
+import copy
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
@@ -13,7 +14,12 @@ import pickle
 import os
 
 # Import our modules
-from data_loader import load_price_data, load_vix_series, attach_vix_to_equity_df
+from config import CONFIG
+from data_loader import (
+    load_price_data,
+    attach_vix_to_equity_df,
+    fetch_vix_series_for_equity_dates,
+)
 from regime_engine import compute_drawdown_from_ath, determine_regime
 from allocation_engine import get_allocation_for_regime
 from rebalance_engine import rebalance_portfolio
@@ -35,62 +41,8 @@ st.set_page_config(
 # SESSION STATE INITIALIZATION
 # ======================================================================
 if 'config' not in st.session_state:
-    # Default configuration
-    st.session_state.config = {
-        "starting_balance": 10000,
-        "start_date": "1999-01-04",
-        "end_date": "2026-03-27",
-        "drawdown_ticker": "QQQ",
-        "rebalance_frequency": "instant",
-        "rebalance_holiday_rule": "next_trading_day",
-        "rebalance_strategy": "per_regime",
-        "dividend_reinvestment": False,
-        "dividend_reinvestment_target": "cash",
-        "tickers": ["QQQ", "TQQQ", "XLU", "SPY"],
-        "allocation_tickers": ["QQQ", "TQQQ", "XLU"],
-        "minimum_allocation": 0.0,
-        "regimes": {
-            "R1": {
-                "dd_low": 0.00,
-                "dd_high": 0.04,
-                "TQQQ": 1.00,
-                "QQQ": 0.00,
-                "XLU": 0.00,
-                "rebalance_on_downward": "match",
-                "rebalance_on_upward": "match",
-            },
-            "R2": {
-                "dd_low": 0.04,
-                "dd_high": 0.28,
-                "TQQQ": 0.00,
-                "QQQ": 0.00,
-                "XLU": 1.00,
-                "rebalance_on_downward": "match",
-                "rebalance_on_upward": "hold",
-            },
-            "R3": {
-                "dd_low": 0.25,
-                "dd_high": 0.30,
-                "TQQQ": 1.00,
-                "QQQ": 0.00,
-                "XLU": 0.00,
-                "rebalance_on_downward": "hold",
-                "rebalance_on_upward": "match",
-            },
-            "R4": {
-                "dd_low": 0.30,
-                "dd_high": 1.00,
-                "TQQQ": 0.00,
-                "QQQ": 0.00,
-                "XLU": 1.00,
-                "rebalance_on_downward": "match",
-                "rebalance_on_upward": "match",
-            },
-        },
-        "use_worst_case_simulation": True,
-        "drawdown_window_enabled": True,
-        "drawdown_window_years": 2,
-    }
+    # Defaults match config.CONFIG (edit config.py as single source of truth)
+    st.session_state.config = copy.deepcopy(CONFIG)
 
 if 'backtest_results' not in st.session_state:
     st.session_state.backtest_results = None
@@ -769,16 +721,13 @@ def run_backtest_from_ui():
             dividend_data=dividend_data
         )
 
-        # VIX (index level) for performance summary context — not used in allocation
-        if use_worst_case:
+        # ^VIX from Yahoo — always load for Performance Summary (even when QQQ/TQQQ are simulated)
+        try:
+            vix_s = fetch_vix_series_for_equity_dates(equity_df)
+            equity_df = attach_vix_to_equity_df(equity_df, vix_s)
+        except Exception as ex:
+            log(f"Warning: could not load ^VIX for summary column: {ex}")
             equity_df = attach_vix_to_equity_df(equity_df, pd.Series(dtype=float))
-        else:
-            try:
-                vix_s = load_vix_series(config["start_date"], config.get("end_date"))
-                equity_df = attach_vix_to_equity_df(equity_df, vix_s)
-            except Exception as ex:
-                log(f"Warning: could not load VIX for summary column: {ex}")
-                equity_df = attach_vix_to_equity_df(equity_df, pd.Series(dtype=float))
         
         progress_bar.progress(90)
         

@@ -2,7 +2,11 @@
 
 from config import CONFIG
 from console_ui import *
-from data_loader import load_price_data, load_vix_series, attach_vix_to_equity_df
+from data_loader import (
+    load_price_data,
+    attach_vix_to_equity_df,
+    fetch_vix_series_for_equity_dates,
+)
 from regime_engine import compute_drawdown_from_ath, determine_regime
 from allocation_engine import get_allocation_for_regime
 from rebalance_engine import rebalance_portfolio
@@ -43,10 +47,10 @@ def run():
     )
 
     try:
-        vix_s = load_vix_series(CONFIG["start_date"], CONFIG.get("end_date"))
+        vix_s = fetch_vix_series_for_equity_dates(equity_df)
         equity_df = attach_vix_to_equity_df(equity_df, vix_s)
     except Exception as e:
-        print(f"[LOG] Warning: could not attach VIX column: {e}")
+        print(f"[LOG] Warning: could not attach ^VIX column: {e}")
         equity_df = attach_vix_to_equity_df(equity_df, pd.Series(dtype=float))
 
     print("Backtest complete!")

@@ -151,22 +151,31 @@ def load_price_data(tickers, start_date, end_date=None, include_dividends=False)
     return closes, dividend_df
 
 
-# Yahoo symbol for the CBOE Volatility Index (index level, not a tradable ETF)
+# CBOE Volatility Index on Yahoo Finance — must stay ^VIX (not VIX).
 VIX_YAHOO_SYMBOL = "^VIX"
 
 
 def load_vix_series(start_date, end_date=None):
     """
-    Daily VIX index close (context / display only — not used for allocation).
+    Daily VIX index close from Yahoo Finance (ticker **^VIX**).
 
+    Context / display only — not used for allocation.
     Returns a float Series indexed by date (timezone-naive), or empty Series on failure.
     """
     if end_date is None:
         log(f"Downloading {VIX_YAHOO_SYMBOL} from {start_date} (end: current date)")
-        data = yf.download(VIX_YAHOO_SYMBOL, start=start_date, auto_adjust=True)
+        data = yf.download(
+            VIX_YAHOO_SYMBOL, start=start_date, auto_adjust=True, progress=False
+        )
     else:
         log(f"Downloading {VIX_YAHOO_SYMBOL} from {start_date} to {end_date}")
-        data = yf.download(VIX_YAHOO_SYMBOL, start=start_date, end=end_date, auto_adjust=True)
+        data = yf.download(
+            VIX_YAHOO_SYMBOL,
+            start=start_date,
+            end=end_date,
+            auto_adjust=True,
+            progress=False,
+        )
 
     if data is None or data.empty:
         log(f"Warning: no VIX data returned for {VIX_YAHOO_SYMBOL}")
@@ -178,6 +187,21 @@ def load_vix_series(start_date, end_date=None):
     if isinstance(s.index, pd.DatetimeIndex) and s.index.tz is not None:
         s = s.tz_convert("UTC").tz_localize(None)
     return s.sort_index()
+
+
+def fetch_vix_series_for_equity_dates(equity_df) -> pd.Series:
+    """
+    Download **^VIX** closes for the same calendar span as ``equity_df`` (first/last row dates).
+
+    Yahoo's ``end`` is exclusive, so we advance the last date by one day when calling
+    ``load_vix_series`` so the final backtest session is included.
+    """
+    if equity_df is None or equity_df.empty or "Date" not in equity_df.columns:
+        return pd.Series(dtype=float)
+    start_s = pd.to_datetime(equity_df["Date"].iloc[0]).strftime("%Y-%m-%d")
+    last = pd.to_datetime(equity_df["Date"].iloc[-1]).normalize()
+    end_exclusive = (last + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    return load_vix_series(start_s, end_exclusive)
 
 
 def attach_vix_to_equity_df(equity_df, vix_series):
@@ -192,13 +216,14 @@ def attach_vix_to_equity_df(equity_df, vix_series):
         return out
 
     vx = vix_series.copy()
-    vx.index = pd.to_datetime(vx.index).normalize()
+    vx.index = pd.DatetimeIndex(pd.to_datetime(vx.index)).normalize()
     # One value per calendar day (last observation if duplicates)
-    by_day = vx.groupby(vx.index).last()
+    by_day = vx.groupby(vx.index).last().sort_index()
 
-    d = pd.to_datetime(out["Date"])
-    if getattr(d.dtype, "tz", None) is not None:
-        d = d.dt.tz_convert("UTC").dt.tz_localize(None)
-    d = d.dt.normalize()
-    out["VIX"] = d.map(by_day).astype(float)
+    lookup = pd.DatetimeIndex(pd.to_datetime(out["Date"], utc=False))
+    if lookup.tz is not None:
+        lookup = lookup.tz_convert("UTC").tz_localize(None)
+    lookup = lookup.normalize()
+    # Reindex aligns to each equity row; avoids sparse .map misses on dtype edge cases
+    out["VIX"] = pd.to_numeric(by_day.reindex(lookup), errors="coerce").to_numpy(dtype=float)
     return out

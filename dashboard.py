@@ -16,6 +16,7 @@ from datetime import datetime
 import io
 from exporter import export_to_excel
 from utils import max_drawdown_from_equity_curve
+from data_loader import VIX_YAHOO_SYMBOL
 
 
 # ======================================================================
@@ -177,6 +178,75 @@ def create_equity_curve_chart(equity_df, config):
         template="plotly_white"
     )
     
+    return fig
+
+
+def create_performance_summary_chart(equity_df):
+    """
+    Same-day context as the Performance Summary table: portfolio value + VIX close.
+    VIX uses the equity curve dates (Layer 1 visualization).
+    """
+    if equity_df is None or equity_df.empty or "Date" not in equity_df.columns:
+        return None
+    if "VIX" not in equity_df.columns:
+        return None
+
+    dates = pd.to_datetime(equity_df["Date"])
+    vix_raw = pd.to_numeric(equity_df["VIX"], errors="coerce")
+    if vix_raw.notna().sum() == 0:
+        return None
+
+    # Short forward-fill only for plotting (e.g. rare holiday / index misaligns); table stays raw
+    vix_plot = vix_raw.ffill(limit=5)
+
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.10,
+        row_heights=[0.52, 0.48],
+        subplot_titles=(
+            "Portfolio value ($)",
+            f"VIX — CBOE close (Yahoo {VIX_YAHOO_SYMBOL})",
+        ),
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=equity_df["Value"],
+            name="Portfolio Value",
+            line=dict(color="#003366", width=2),
+            hovertemplate="<b>Portfolio</b><br>%{x}<br>$%{y:,.2f}<extra></extra>",
+        ),
+        row=1,
+        col=1,
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=vix_plot,
+            name="VIX",
+            line=dict(color="#b91c1c", width=1.5),
+            connectgaps=False,
+            hovertemplate="<b>VIX</b><br>%{x}<br>%{y:.2f}<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+
+    fig.update_yaxes(title_text="Value ($)", row=1, col=1)
+    fig.update_yaxes(title_text="VIX level", row=2, col=1)
+    fig.update_xaxes(title_text="Date", row=2, col=1)
+    fig.update_layout(
+        title="Performance summary — portfolio vs VIX",
+        height=560,
+        hovermode="x unified",
+        template="plotly_white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=80),
+    )
     return fig
 
 
@@ -632,9 +702,23 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
     # Performance Summary Table
     st.header("📊 Performance Summary")
     st.caption(
-        "VIX column (when present): CBOE Volatility Index **close** on each date — for context only; "
-        "it is an index, not a portfolio holding, and is **not** used for regime or allocation in this app."
+        f"VIX column (when present): **close** of the CBOE Volatility Index from Yahoo Finance "
+        f"(`{VIX_YAHOO_SYMBOL}`) on each backtest date — context only; not a holding and not used for regime/allocation."
     )
+    perf_summary_chart = create_performance_summary_chart(equity_df)
+    if perf_summary_chart is not None:
+        st.plotly_chart(perf_summary_chart, use_container_width=True)
+        st.caption(
+            "Chart: VIX uses the same dates as the table below. "
+            "Very short gaps (≤5 rows) are forward-filled **only in the chart** for readability. "
+            "Sanity check: VIX typically spikes in **Mar 2020**, **2008–09**, and **early 2022** when those ranges are included."
+        )
+    elif "VIX" in equity_df.columns and equity_df["VIX"].notna().sum() == 0:
+        st.warning(
+            "**VIX column is empty** for this run (download failed, worst-case simulation path, or date misalignment). "
+            "The chart requires non-null VIX closes aligned to backtest dates."
+        )
+
     drawdown_ticker = config.get("drawdown_ticker", "QQQ") if config else "QQQ"
     ath_col = f"{drawdown_ticker}_ATH_raw"
     try:
@@ -768,7 +852,7 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
         if px_col in formatted_df.columns:
             rename_perf[px_col] = f"{drawdown_ticker} close ($)"
         if "VIX" in formatted_df.columns:
-            rename_perf["VIX"] = "VIX (index close)"
+            rename_perf["VIX"] = f"VIX close ({VIX_YAHOO_SYMBOL})"
         if rename_perf:
             formatted_df = formatted_df.rename(columns=rename_perf)
         
