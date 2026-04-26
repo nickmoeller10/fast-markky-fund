@@ -1,0 +1,10 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "unit: isolated unit tests with no I/O",
+    "integration: tests that wire multiple modules together",
+    "metrics: financial metric correctness tests (formula + quantstats)",
+]
