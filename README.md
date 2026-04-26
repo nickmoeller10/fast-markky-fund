@@ -10,23 +10,42 @@ Fast Markky Fund implements a regime-based tactical asset allocation strategy th
 
 ### Regime-Based Allocation
 
-The strategy uses three market regimes based on QQQ drawdown from all-time high:
+The strategy uses three market regimes based on QQQ drawdown from a rolling 1-year all-time high.
 
-- **R1 — Ride High** (0-6% drawdown): 100% TQQQ
-  - Aggressive position during market strength
-  
-- **R2 — Safeguard** (6-28% drawdown): 100% XLU
-  - Defensive position during moderate market stress
-  
-- **R3 — Safe Buyback** (28%+ drawdown): 100% TQQQ
-  - Aggressive re-entry during deep market corrections
+> **Note:** the allocations and thresholds below are the current **defaults**. They are sensible starting values, not tuned production weights, and are subject to change as the strategy is iterated. See `config.py` to override.
+
+- **R1 — Ride High** (0–6% drawdown): **100% TQQQ**
+  - Aggressive leveraged position during market strength
+  - Signal overrides:
+    - *Max Bull* (signal > +2): hold 100% TQQQ
+    - *Bull Fading* (signal < −2): de-leverage to 100% QQQ
+
+- **R2 — Cautious Defense** (6–20% drawdown): **70% XLU + 30% QQQ**
+  - Mostly defensive but retains some equity exposure
+  - Signal overrides:
+    - *Recovery Confirmed* (signal > +2): rotate to 70% QQQ + 30% XLU
+    - *Deteriorating Fast* (signal < −3): full defense — 100% XLU
+
+- **R3 — Contrarian Buyback** (20%+ drawdown): **50% TQQQ + 50% QQQ**
+  - Aggressive re-entry — deep drawdowns historically precede strong recoveries
+  - Signal overrides:
+    - *Capitulation Reversal* (signal > +3): lean harder — 80% TQQQ + 20% QQQ
+    - *Crisis Deepening* (signal < −4): pull back to 100% XLU
+
+### Composite Signal
+
+The signal total ranges over `[−6, +6]` and combines:
+- **L1** — VIX z-score (rolling 252-day mean ± 1σ buckets)
+- **L2** — SPY MACD (12/26/9)
+- **L3** — SPY MA50 vs MA200 crossover
 
 ### Asymmetric Regime Rules
 
-- **Down moves**: Portfolio immediately switches to defensive when market regime worsens
-- **Up moves**: Portfolio only returns to aggressive (R1) when market fully recovers to R1
+The default `per_regime` rebalance strategy lets each regime declare:
+- `rebalance_on_downward` — should the portfolio follow when the market gets worse and arrives here?
+- `rebalance_on_upward` — should the portfolio follow when the market improves and arrives here?
 
-This asymmetric approach helps protect capital during downturns while ensuring full participation in recoveries.
+Both default to `match` (always follow). Set either to `hold` to delay rebalancing into a regime — useful when you want the portfolio to skip a partial recovery and only rebalance on a full one.
 
 ## 🚀 Quick Start
 
