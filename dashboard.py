@@ -149,20 +149,21 @@ def calculate_metrics(equity_df, config=None):
     end_date = pd.to_datetime(equity_df["Date"].iloc[-1])
     
     years = (end_date - start_date).days / 365.25
-    cagr = (end_val / start_val) ** (1 / years) - 1 if years > 0 else 0
-    
-    total_return = (end_val / start_val) - 1
-    
+    cagr = float((end_val / start_val) ** (1 / years) - 1) if years > 0 else 0.0
+
+    total_return = float((end_val / start_val) - 1)
+
     # Max drawdown: largest % drop from any prior peak to a trough (full simulation)
-    max_drawdown = max_drawdown_from_equity_curve(equity_df["Value"])
-    
+    max_drawdown = float(max_drawdown_from_equity_curve(equity_df["Value"]))
+
     # Calculate volatility (annualized)
     returns = equity_df["Value"].pct_change().dropna()
-    volatility = returns.std() * np.sqrt(252)  # Annualized
-    
+    vol_raw = returns.std() * np.sqrt(252)
+    volatility = float(vol_raw) if pd.notna(vol_raw) else 0.0
+
     # Calculate Sharpe ratio (assuming 0% risk-free rate)
-    sharpe = (cagr / volatility) if volatility > 0 else 0
-    
+    sharpe = float(cagr / volatility) if volatility > 0 else 0.0
+
     # Calculate Sortino ratio (downside deviation only)
     # Downside deviation: square root of mean of squared negative returns
     # Target return is 0 (no risk-free rate assumption)
@@ -170,11 +171,11 @@ def calculate_metrics(equity_df, config=None):
     if len(downside_returns) > 0:
         # Calculate downside deviation: sqrt(mean(squared negative returns))
         downside_variance = (downside_returns ** 2).mean()
-        downside_deviation = np.sqrt(downside_variance) * np.sqrt(252)  # Annualized
-        sortino = (cagr / downside_deviation) if downside_deviation > 0 else 0
+        downside_deviation = float(np.sqrt(downside_variance) * np.sqrt(252))
+        sortino = float(cagr / downside_deviation) if downside_deviation > 0 else 0.0
     else:
         # No negative returns - Sortino is undefined (infinite or very high)
-        sortino = float('inf') if cagr > 0 else 0
+        sortino = float('inf') if cagr > 0 else 0.0
     
     # Calculate Beta (portfolio sensitivity to market)
     # Beta = Covariance(portfolio returns, benchmark returns) / Variance(benchmark returns)
