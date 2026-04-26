@@ -81,6 +81,10 @@ def price_fixture():
     """
     Deterministic OHLCV-style close prices for 5 years (1260 trading days).
     seed=42 — do not change without updating locked regression values.
+
+    TQQQ starts at 30.0 (approximate historical price at 2018 launch, not 3x QQQ).
+    TQQQ path uses log-return approximation: exp(3 * cumsum(returns * 0.9)).
+    For returns < ±2% daily the error vs true daily-rebalanced 3x is negligible.
     """
     np.random.seed(42)
     n_days = 1260
