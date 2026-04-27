@@ -17,6 +17,8 @@ import io
 from exporter import export_to_excel
 from utils import max_drawdown_from_equity_curve
 from data_loader import VIX_YAHOO_SYMBOL
+from allocation_engine import get_allocation_for_regime
+from signal_override_engine import allocation_human_readable
 
 
 # Ordered columns appended after core snapshot fields in Performance Summary
@@ -141,6 +143,83 @@ except:
 # ======================================================================
 # HELPER FUNCTIONS
 # ======================================================================
+REGIME_DESCRIPTIONS = {
+    "R1": "Ride High",
+    "R2": "Cautious Defense",
+    "R3": "Contrarian Buyback",
+}
+
+
+def todays_regime_status(equity_df, config):
+    """
+    Pull the most recent row from equity_df and resolve the recommended allocation.
+    Returns a dict; render_todays_regime_status() consumes it for display.
+    """
+    last = equity_df.iloc[-1]
+    market_regime = last.get("Market_Regime")
+    portfolio_regime = last.get("Portfolio_Regime")
+    override_active = str(last.get("Signal_override_active") or "none")
+    override_label = str(last.get("Signal_override_label") or "")
+    override_alloc_str = str(last.get("Signal_override_allocation") or "")
+
+    if override_active != "none" and override_alloc_str:
+        recommended_alloc_str = override_alloc_str
+    elif portfolio_regime and config and portfolio_regime in config.get("regimes", {}):
+        base_alloc = get_allocation_for_regime(portfolio_regime, config)
+        recommended_alloc_str = allocation_human_readable(
+            base_alloc, config.get("allocation_tickers", [])
+        )
+    else:
+        recommended_alloc_str = ""
+
+    as_of = pd.to_datetime(last.get("Date")) if last.get("Date") is not None else None
+
+    return {
+        "as_of": as_of,
+        "market_regime": market_regime,
+        "portfolio_regime": portfolio_regime,
+        "override_active": override_active,
+        "override_label": override_label,
+        "recommended_allocation": recommended_alloc_str,
+    }
+
+
+def render_todays_regime_status(equity_df, config):
+    """Render the Today's Status panel above the historical metrics."""
+    status = todays_regime_status(equity_df, config)
+
+    as_of_str = status["as_of"].strftime("%Y-%m-%d") if status["as_of"] is not None else "—"
+    st.subheader(f"📍 Today's Status (as of {as_of_str})")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        market = status["market_regime"] or "—"
+        portfolio = status["portfolio_regime"] or "—"
+        market_desc = REGIME_DESCRIPTIONS.get(market, "")
+        portfolio_desc = REGIME_DESCRIPTIONS.get(portfolio, "")
+        st.metric("Market Regime", market)
+        if market_desc:
+            st.caption(market_desc)
+        st.metric("Portfolio Regime", portfolio)
+        if portfolio_desc and portfolio != market:
+            st.caption(portfolio_desc)
+
+    with col2:
+        if status["override_active"] == "none":
+            st.metric("Signal Override", "None")
+            st.caption("Using base regime allocation")
+        else:
+            st.metric("Signal Override", status["override_active"].title())
+            st.caption(f'"{status["override_label"]}"')
+
+    with col3:
+        st.metric("Recommended Allocation", " ")
+        st.markdown(f"**{status['recommended_allocation'] or '—'}**")
+
+    st.markdown("---")
+
+
 def calculate_metrics(equity_df, config=None):
     """Calculate key performance metrics"""
     start_val = equity_df["Value"].iloc[0]
@@ -625,10 +704,14 @@ def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
     # Title and header
     st.title("📈 Fast Markky Fund - Backtest Dashboard")
     st.markdown("---")
-    
+
+    # Today's Status panel — pulled from the last row of equity_df so the
+    # widget cannot disagree with the backtest result.
+    render_todays_regime_status(equity_df, config)
+
     # Calculate metrics
     metrics = calculate_metrics(equity_df, config)
-    
+
     # Key Performance Metrics - Enhanced Display
     st.header("📊 Key Performance Metrics")
     
