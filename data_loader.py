@@ -1,6 +1,7 @@
 # data_loader.py
 from utils import log
 import yfinance as yf
+from data_cache import cached_yf_download
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -62,10 +63,10 @@ def load_price_data(tickers, start_date, end_date=None, include_dividends=False)
     """
     if end_date is None:
         log(f"Downloading price data for: {tickers}, starting {start_date} (end: current date)")
-        data = yf.download(tickers, start=start_date, auto_adjust=True)
+        data = cached_yf_download(tickers, start=start_date, auto_adjust=True)
     else:
         log(f"Downloading price data for: {tickers}, from {start_date} to {end_date}")
-        data = yf.download(tickers, start=start_date, end=end_date, auto_adjust=True)
+        data = cached_yf_download(tickers, start=start_date, end=end_date, auto_adjust=True)
 
     log(f"Download complete. Shape: {data.shape}")
     closes = data["Close"].dropna(how="all")
@@ -165,10 +166,10 @@ def load_spy_series(start_date, end_date=None):
     """
     if end_date is None:
         log(f"Downloading SPY from {start_date} (end: current date)")
-        data = yf.download("SPY", start=start_date, auto_adjust=True, progress=False)
+        data = cached_yf_download("SPY", start=start_date, auto_adjust=True, progress=False)
     else:
         log(f"Downloading SPY from {start_date} to {end_date}")
-        data = yf.download(
+        data = cached_yf_download(
             "SPY",
             start=start_date,
             end=end_date,
@@ -197,12 +198,12 @@ def load_vix_series(start_date, end_date=None):
     """
     if end_date is None:
         log(f"Downloading {VIX_YAHOO_SYMBOL} from {start_date} (end: current date)")
-        data = yf.download(
+        data = cached_yf_download(
             VIX_YAHOO_SYMBOL, start=start_date, auto_adjust=True, progress=False
         )
     else:
         log(f"Downloading {VIX_YAHOO_SYMBOL} from {start_date} to {end_date}")
-        data = yf.download(
+        data = cached_yf_download(
             VIX_YAHOO_SYMBOL,
             start=start_date,
             end=end_date,

@@ -51,9 +51,13 @@ class TestBuildRegimeSignalDrawdown(unittest.TestCase):
 
 
 class TestBacktestRegimeLag(unittest.TestCase):
+    @patch("data_cache.cached_yf_download")
     @patch("yfinance.download")
-    def test_instant_no_same_day_regime_flip(self, mock_download):
+    def test_instant_no_same_day_regime_flip(self, mock_download, mock_cached):
+        # Patch BOTH the raw yfinance call and the cache wrapper so a populated
+        # real-data cache doesn't leak into this synthetic 3-day scenario.
         mock_download.return_value = pd.DataFrame()
+        mock_cached.return_value = pd.DataFrame()
         idx = pd.bdate_range("2020-01-02", periods=3, freq="B")
         price_data = pd.DataFrame(
             {

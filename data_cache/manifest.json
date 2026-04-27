@@ -1,0 +1,224 @@
+{
+  "BIL_GLD_QQQ_SPLV_SPY_TLT_TQQQ_XLU__650663bc2513.pkl": {
+    "end": null,
+    "fetched_at": "2026-04-27T00:24:47.867776+00:00",
+    "first_date": "1999-01-04",
+    "last_date": "2026-04-24",
+    "python_version": "3.10.11",
+    "row_count": 6869,
+    "sha256": "44a933a841a0d1137f1bc5831a0a0c843b794d231f2ad759a4fa451e5ab1525d",
+    "start": "1999-01-04",
+    "tickers": [
+      "BIL",
+      "GLD",
+      "QQQ",
+      "SPLV",
+      "SPY",
+      "TLT",
+      "TQQQ",
+      "XLU"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "QQQ__770e9520b070.pkl": {
+    "end": null,
+    "fetched_at": "2026-04-27T00:24:48.282883+00:00",
+    "first_date": "1999-03-10",
+    "last_date": "2026-04-24",
+    "python_version": "3.10.11",
+    "row_count": 6824,
+    "sha256": "e5559bff090f4b25d573295d7edf3eb3afe8c8c450b373727a68b4f810d5bebd",
+    "start": "1980-01-01",
+    "tickers": [
+      "QQQ"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__47594907e934.pkl": {
+    "end": "2020-01-07",
+    "fetched_at": "2026-04-27T00:24:57.714572+00:00",
+    "first_date": null,
+    "last_date": null,
+    "python_version": "3.10.11",
+    "row_count": 0,
+    "sha256": "b7c7bc44cc7f8fba641539c6c808e1f2ba2e41ee1be4932d2842dbd274358b55",
+    "start": "2017-10-24",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__4f3cafb1927a.pkl": {
+    "end": null,
+    "fetched_at": "2026-04-27T00:24:48.708745+00:00",
+    "first_date": "1996-01-02",
+    "last_date": "2026-04-24",
+    "python_version": "3.10.11",
+    "row_count": 7628,
+    "sha256": "469efe8eb0be07edc9f048d7c2c03597bc984ce63eb6a1914a89f25bdbcc3b77",
+    "start": "1996-01-01",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__a01d201a3c95.pkl": {
+    "end": "2000-06-17",
+    "fetched_at": "2026-04-27T00:25:01.035363+00:00",
+    "first_date": "1998-03-24",
+    "last_date": "2000-06-16",
+    "python_version": "3.10.11",
+    "row_count": 565,
+    "sha256": "bd4325c5479e00066588f42812752ab5b7036178cdfa3a0d2c743bbebfd93e25",
+    "start": "1998-03-24",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__a8cc53b70818.pkl": {
+    "end": "2000-01-13",
+    "fetched_at": "2026-04-27T00:25:00.093779+00:00",
+    "first_date": "1997-10-27",
+    "last_date": "2000-01-12",
+    "python_version": "3.10.11",
+    "row_count": 558,
+    "sha256": "f541a0c12a06acc298efccf5dbd3439231635522fe336cd976b64a5bafcf0d1b",
+    "start": "1997-10-25",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__e43019bc1b6c.pkl": {
+    "end": "2022-11-01",
+    "fetched_at": "2026-04-27T00:24:58.546825+00:00",
+    "first_date": "2018-01-02",
+    "last_date": "2022-10-31",
+    "python_version": "3.10.11",
+    "row_count": 1260,
+    "sha256": "b1c3d3c8fd5f48897fedcb1667ee690cd6e63a1fd1870494baeb9c4dd04af75d",
+    "start": "2015-10-25",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__6ae66194a82b.pkl": {
+    "end": "2022-11-01",
+    "fetched_at": "2026-04-27T00:24:58.552251+00:00",
+    "first_date": "2018-01-02",
+    "last_date": "2022-10-31",
+    "python_version": "3.10.11",
+    "row_count": 1260,
+    "sha256": "b1c3d3c8fd5f48897fedcb1667ee690cd6e63a1fd1870494baeb9c4dd04af75d",
+    "start": "2015-10-25",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__75ba2af413fb.pkl": {
+    "end": "2020-01-07",
+    "fetched_at": "2026-04-27T00:24:57.715855+00:00",
+    "first_date": null,
+    "last_date": null,
+    "python_version": "3.10.11",
+    "row_count": 0,
+    "sha256": "b7c7bc44cc7f8fba641539c6c808e1f2ba2e41ee1be4932d2842dbd274358b55",
+    "start": "2017-10-24",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__8bb15c1bfaad.pkl": {
+    "end": "2000-06-17",
+    "fetched_at": "2026-04-27T00:25:01.201558+00:00",
+    "first_date": "1998-03-24",
+    "last_date": "2000-06-16",
+    "python_version": "3.10.11",
+    "row_count": 565,
+    "sha256": "cd7dd674cf30441057e6130547e709341115d3db78fcc0db2b91f6c4c21ca8f1",
+    "start": "1998-03-24",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__c2bbbefd4ce2.pkl": {
+    "end": "2000-01-13",
+    "fetched_at": "2026-04-27T00:25:00.261311+00:00",
+    "first_date": "1997-10-27",
+    "last_date": "2000-01-12",
+    "python_version": "3.10.11",
+    "row_count": 558,
+    "sha256": "397509c4acfc8935aa899cb0d4981df868ff9eeeccc89dbecbd0cebd55c4ce52",
+    "start": "1997-10-25",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__ee60f25793fe.pkl": {
+    "end": null,
+    "fetched_at": "2026-04-27T00:24:48.971205+00:00",
+    "first_date": "1996-01-02",
+    "last_date": "2026-04-24",
+    "python_version": "3.10.11",
+    "row_count": 7628,
+    "sha256": "411984ef4872bd74fc72d2accbe257070a395ef5a82c5353f4904b8752b55a85",
+    "start": "1996-01-01",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  }
+}

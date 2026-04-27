@@ -105,7 +105,13 @@ def locked_equity_df():
         df.columns = pd.MultiIndex.from_tuples([("Close", "QQQ")])
         return df
 
+    # Patch the cache wrapper at its source module. The local `from data_cache
+    # import cached_yf_download` inside run_backtest re-runs each call, so the
+    # patched value is picked up. yfinance.download is also patched in case any
+    # path bypasses the cache. data_loader signal loaders are patched for the
+    # same reason — they're called from signal_layers, not run_backtest directly.
     with (
+        patch("data_cache.cached_yf_download", side_effect=_mock_yf_download),
         patch("yfinance.download", side_effect=_mock_yf_download),
         patch("data_loader.load_spy_series", return_value=empty_series),
         patch("data_loader.load_vix_series", return_value=empty_series),

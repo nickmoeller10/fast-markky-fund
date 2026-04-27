@@ -586,8 +586,8 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
     # -------------------------
     # Download full historical data for drawdown_ticker from its inception
     log(f"Downloading full historical data for {drawdown_ticker} from inception for pre-portfolio simulation...")
-    import yfinance as yf
-    
+    from data_cache import cached_yf_download
+
     # Download from ticker inception (use 1980 as safe early date - yfinance returns from actual inception)
     # drawdown_price_series = Yahoo history merged with portfolio panel: on overlapping dates the portfolio
     # download wins so regime ATH matches {ticker}_price in the equity table (no ATH < close artifacts).
@@ -595,10 +595,10 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
     historical_dd_full = None
     historical_ath_full = None
     pre_portfolio_start_date = None
-    
+
     try:
-        historical_data = yf.download(
-            drawdown_ticker, 
+        historical_data = cached_yf_download(
+            drawdown_ticker,
             start="1980-01-01",  # Very early date - yfinance will return from ticker's actual inception
             end=None,  # Get all available data up to current
             auto_adjust=True,

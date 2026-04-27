@@ -166,7 +166,8 @@ Returned by `run_backtest`. **Note:** signal-layer columns (Signal_L1, MACD_*, e
 | `signal_layers.py` | VIX z-score (L1), MACD (L2), MA50/200 (L3) → composite signal total in `[-6, +6]`. |
 | `signal_override_engine.py` | Within-regime allocation overrides triggered by signal total thresholds. |
 | `utils.py` | `max_drawdown_from_equity_curve()` (returns non-positive float), `log()`, helpers. |
-| `data_loader.py` | yfinance wrappers. **No caching — every run is non-deterministic.** |
+| `data_loader.py` | yfinance wrappers; routes every download through `data_cache.cached_yf_download`. |
+| `data_cache.py` | On-disk cache for yfinance downloads. Three modes via `FMF_DATA_MODE`: `auto` (cache or fetch), `frozen` (cache only, raises on miss), `refresh` (always fetch). Manifest at `data_cache/manifest.json` records SHA256, fetch timestamp, yfinance version. |
 
 ### Entry points / UI / output
 
@@ -354,8 +355,8 @@ All 6 signal overrides enabled (see Architecture section for the full table). Th
 
 ## Open issues / tech debt (severity high → low)
 
-1. **Non-reproducible backtests.** Live yfinance, no caching. Same backtest on different days = different numbers. Plan: `docs/superpowers/plans/data-provenance-and-production-regression.md`.
-2. **Locked regression doesn't cover production code path.** `test_regression_ground_truth.py` uses `down_only` + no overrides + no drawdown window. Production uses `per_regime` + 6 overrides + drawdown window + 25y of real history. Same plan covers the fix.
+1. ~~**Non-reproducible backtests.**~~ Resolved by `data_cache.py`. Run with `FMF_DATA_MODE=frozen` for guaranteed reproducibility against the committed snapshot.
+2. **Locked regression doesn't cover production code path.** `test_regression_ground_truth.py` uses `down_only` + no overrides + no drawdown window. Production uses `per_regime` + 6 overrides + drawdown window + 25y of real history. Will be addressed by Phase 2E of the optimizer plan.
 3. **Duplicate `compute_drawdown_from_ath`** — `regime_engine.py:5` AND `backtest.py:107`. Will silently drift if either changes.
 4. **`dashboard.py` imports streamlit at module level** — forces metric-only tests to install streamlit/plotly. `calculate_metrics` should live in a `metrics.py` with no UI deps.
 5. **`run_backtest` has hidden network calls** — yfinance + `signal_layers.load_spy_series` + `signal_layers.load_vix_series`. Tests must patch 3 functions to mock.
