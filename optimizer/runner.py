@@ -20,26 +20,42 @@ from optimizer.score import score_config
 OPTIMIZER_DIR = Path(__file__).resolve().parent.parent / "optimizer_runs"
 
 
-def _objective(trial: optuna.Trial, n_entry_points: int, rng_seed_base: int) -> float:
-    config = suggest_config(trial)
-    metrics = score_config(
-        config,
-        n_entry_points=n_entry_points,
-        rng_seed=rng_seed_base + trial.number,
-    )
+def _objective(
+    trial: optuna.Trial,
+    n_entry_points: int,
+    rng_seed_base: int,
+    constraints=None,
+    dd_hard_floor: float | None = None,
+) -> float:
+    from optimizer.parameter_space import suggest_config as _suggest
+
+    if constraints is None:
+        config = _suggest(trial)
+    else:
+        config = _suggest(trial, constraints=constraints)
+
+    score_kwargs = {"n_entry_points": n_entry_points, "rng_seed": rng_seed_base + trial.number}
+    if dd_hard_floor is not None:
+        score_kwargs["dd_hard_floor"] = dd_hard_floor
+
+    metrics = score_config(config, **score_kwargs)
     if "error" in metrics:
         # Penalize empty/broken configs but don't crash the study
         for k, v in metrics.items():
+            if k == "runs":
+                continue
             if isinstance(v, (int, float)):
                 trial.set_user_attr(k, float(v))
             else:
                 trial.set_user_attr(k, str(v))
         return -1e6
 
-    # Stash metrics + the config dict on the trial
+    # Stash scalar metrics + the config + the per-run details
+    runs = metrics.pop("runs", [])
     for k, v in metrics.items():
         trial.set_user_attr(k, float(v))
     trial.set_user_attr("config_json", json.dumps(config, default=str))
+    trial.set_user_attr("runs_json", json.dumps(runs, default=str))
     return float(metrics["score"])
 
 
@@ -50,13 +66,16 @@ def run_study(
     n_jobs: int = 1,
     rng_seed_base: int = 0,
     output_dir: Path | str | None = None,
+    constraints=None,
+    dd_hard_floor: float | None = None,
 ) -> tuple[optuna.Study, pd.DataFrame]:
     """
     Run an Optuna study and return (study, results_df).
 
     Persists:
-      <output_dir>/<study_name>.db          Optuna SQLite (resumable)
-      <output_dir>/<study_name>_results.parquet   per-trial metrics + config
+      <output_dir>/<study_name>.db                 Optuna SQLite (resumable, includes
+                                                    per-trial config_json + runs_json)
+      <output_dir>/<study_name>_results.parquet    flattened per-trial snapshot
     """
     out_dir = Path(output_dir) if output_dir else OPTIMIZER_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -70,9 +89,23 @@ def run_study(
         sampler=optuna.samplers.TPESampler(seed=rng_seed_base),
     )
 
+    if constraints is not None or dd_hard_floor is not None:
+        study.set_user_attr(
+            "iteration_metadata",
+            json.dumps(
+                {
+                    "constraints": (constraints.to_dict() if constraints is not None else None),
+                    "dd_hard_floor": dd_hard_floor,
+                },
+                default=str,
+            ),
+        )
+
     started = time.time()
     study.optimize(
-        lambda trial: _objective(trial, n_entry_points, rng_seed_base),
+        lambda trial: _objective(
+            trial, n_entry_points, rng_seed_base, constraints, dd_hard_floor
+        ),
         n_trials=n_trials,
         n_jobs=n_jobs,
         show_progress_bar=True,

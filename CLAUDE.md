@@ -412,7 +412,8 @@ streamlit run app.py
 
 - **Test suite design** — `docs/superpowers/specs/test-suite-design.md`
 - **Test suite implementation** — `docs/superpowers/plans/test-suite-implementation.md`
-- **Data provenance + production regression** (next priority, not yet executed) — `docs/superpowers/plans/data-provenance-and-production-regression.md`
+- **Data provenance + production regression** (resolved by `data_cache.py`) — `docs/superpowers/plans/data-provenance-and-production-regression.md`
+- **Iterative config search methodology** — `docs/superpowers/methodologies/iterative-config-search.md`. The standard playbook for tuning regime allocations: 50-trial Monte Carlo batches, analyze trends, narrow constraints, repeat 5–7+ times. Run via `python3 scripts/iterate.py --study iterN`.
 
 ---
 

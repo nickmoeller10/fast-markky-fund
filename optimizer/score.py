@@ -3,7 +3,9 @@ Monte Carlo entry-point evaluator + aggregate scoring.
 
 For a given candidate config, run the full-history backtest plus N random
 entry-point backtests, aggregate metrics, and return a dict that includes
-the primary score (used by Optuna) and the Pareto axes (saved for analysis).
+the primary score (used by Optuna), the Pareto axes, AND the per-run
+details (so we can analyze WHY a config failed — which entry points hit
+deep drawdowns, which regimes the strategy actually used, etc.).
 """
 
 from __future__ import annotations
@@ -32,6 +34,12 @@ SCORE_REBAL_PENALTY = 0.10        # turnover penalty per (median rebalances / ye
 SCORE_TAIL_PENALTY = 0.50         # weight on p05_cagr below threshold
 SCORE_P05_THRESHOLD = 0.0          # configs with p05_cagr < 0 get penalized
 
+# Hard penalty: configs whose worst max drawdown is BELOW this floor get
+# heavily penalized so the search avoids strategies that blow past 40% DD.
+# Default -0.40 means "don't tolerate worse than 40% drawdown."
+SCORE_DD_HARD_FLOOR = -0.40
+SCORE_DD_HARD_PENALTY = 5.0       # multiplier on (floor - worst_max_dd) when below floor
+
 
 def _load_panel(config: dict, full_start: str, full_end: str | None) -> pd.DataFrame:
     """
@@ -42,10 +50,24 @@ def _load_panel(config: dict, full_start: str, full_end: str | None) -> pd.DataF
     return load_price_data(ALL_PANEL_TICKERS, full_start, end_date=full_end)
 
 
-def _single_run_metrics(
-    price_panel: pd.DataFrame, config: dict
-) -> dict[str, float]:
-    """Run one backtest, return CAGR / max_dd / rebalance_count / years."""
+def _regime_distribution(eq: pd.DataFrame) -> dict[str, float]:
+    """% of trading days the portfolio spent in each regime."""
+    if "Portfolio_Regime" not in eq.columns or len(eq) == 0:
+        return {}
+    counts = eq["Portfolio_Regime"].fillna("UNKNOWN").value_counts(normalize=True)
+    return {str(k): float(v) for k, v in counts.items()}
+
+
+def _override_activations(eq: pd.DataFrame) -> dict[str, int]:
+    """Count of days each override mode was active."""
+    if "Signal_override_active" not in eq.columns or len(eq) == 0:
+        return {}
+    counts = eq["Signal_override_active"].fillna("none").value_counts()
+    return {str(k): int(v) for k, v in counts.items()}
+
+
+def _single_run_metrics(price_panel: pd.DataFrame, config: dict) -> dict[str, Any]:
+    """Run one backtest, return a per-run details dict."""
     eq, _, _ = run_backtest(
         price_panel,
         config,
@@ -54,7 +76,10 @@ def _single_run_metrics(
         rebalance_portfolio,
     )
     if eq is None or eq.empty:
-        return {"cagr": 0.0, "max_dd": 0.0, "rebalance_count": 0, "years": 0.0}
+        return {
+            "cagr": 0.0, "max_dd": 0.0, "rebalance_count": 0, "years": 0.0,
+            "final_value": 0.0, "regime_distribution": {}, "override_activations": {},
+        }
 
     vals = eq["Value"]
     start_v = float(vals.iloc[0])
@@ -70,6 +95,9 @@ def _single_run_metrics(
         "max_dd": max_dd,
         "rebalance_count": rebalance_count,
         "years": float(years),
+        "final_value": end_v,
+        "regime_distribution": _regime_distribution(eq),
+        "override_activations": _override_activations(eq),
     }
 
 
@@ -111,16 +139,19 @@ def score_config(
     n_entry_points: int = 30,
     rng_seed: int = 0,
     min_years_remaining: float = 5.0,
-) -> dict[str, float]:
+    dd_hard_floor: float = SCORE_DD_HARD_FLOOR,
+    dd_hard_penalty: float = SCORE_DD_HARD_PENALTY,
+) -> dict[str, Any]:
     """
     Evaluate a config across (1) the full history + (n_entry_points) random
-    entry-date sub-runs. Returns a dict of aggregated metrics + the score.
+    entry-date sub-runs. Returns aggregated metrics + the score + a list of
+    per-run dicts under "runs" so callers can persist them for analysis.
     """
     full_start = str(config["start_date"])
     full_end = str(config["end_date"]) if config.get("end_date") else None
     panel = _load_panel(config, full_start, full_end)
     if panel is None or panel.empty:
-        return {"score": -999.0, "error": "empty_panel"}
+        return {"score": -999.0, "error": "empty_panel", "runs": []}
 
     rng = np.random.default_rng(rng_seed)
     panel_dates = pd.DatetimeIndex(panel.index)
@@ -128,12 +159,16 @@ def score_config(
         panel_dates, n_entry_points, rng, min_years_remaining=min_years_remaining
     )
 
-    # Full-history run uses the panel as-is
+    # Full-history run
     runs: list[dict] = []
     full_metrics = _single_run_metrics(panel, config)
-    runs.append({"start_date": panel_dates[0], "kind": "full", **full_metrics})
+    runs.append({
+        "start_date": panel_dates[0].strftime("%Y-%m-%d"),
+        "kind": "full",
+        **full_metrics,
+    })
 
-    # Per-entry-point runs use a sub-panel from each random start
+    # Per-entry-point runs
     for d in entry_dates:
         sub = panel.loc[d:].copy()
         if len(sub) < 50:
@@ -141,17 +176,21 @@ def score_config(
         sub_cfg = dict(config)
         sub_cfg["start_date"] = d.strftime("%Y-%m-%d")
         m = _single_run_metrics(sub, sub_cfg)
-        runs.append({"start_date": d, "kind": "entry", **m})
+        runs.append({
+            "start_date": d.strftime("%Y-%m-%d"),
+            "kind": "entry",
+            **m,
+        })
 
     if not runs:
-        return {"score": -999.0, "error": "no_runs"}
+        return {"score": -999.0, "error": "no_runs", "runs": []}
 
     df = pd.DataFrame(runs)
     cagrs = df["cagr"].to_numpy(dtype=float)
     max_dds = df["max_dd"].to_numpy(dtype=float)
     rebs = df["rebalance_count"].to_numpy(dtype=float)
-    years = df["years"].to_numpy(dtype=float)
-    rebs_per_year = np.where(years > 0, rebs / years, 0.0)
+    years_arr = df["years"].to_numpy(dtype=float)
+    rebs_per_year = np.where(years_arr > 0, rebs / years_arr, 0.0)
 
     median_cagr = float(np.median(cagrs))
     p05_cagr = float(np.percentile(cagrs, 5))
@@ -162,12 +201,20 @@ def score_config(
     median_max_dd = float(np.median(max_dds))
     median_rebs_per_year = float(np.median(rebs_per_year))
     worst_rebs_per_year = float(np.max(rebs_per_year))
+    # How many runs blew past the hard DD floor?
+    dd_floor_breach_count = int((max_dds < dd_hard_floor).sum())
+    dd_floor_breach_rate = float(dd_floor_breach_count) / max(1, len(max_dds))
 
     score = (
         median_cagr / max(abs(worst_max_dd), SCORE_DD_FLOOR)
         - SCORE_REBAL_PENALTY * median_rebs_per_year
         - SCORE_TAIL_PENALTY * max(0.0, SCORE_P05_THRESHOLD - p05_cagr)
     )
+    # Hard penalty: subtract a big number proportional to how far past the
+    # hard DD floor the worst run went. This dominates the score for any
+    # config that allows a > 40% drawdown.
+    if worst_max_dd < dd_hard_floor:
+        score -= dd_hard_penalty * (dd_hard_floor - worst_max_dd)
 
     return {
         "score": float(score),
@@ -180,5 +227,8 @@ def score_config(
         "median_max_dd": median_max_dd,
         "median_rebalances_per_year": median_rebs_per_year,
         "worst_rebalances_per_year": worst_rebs_per_year,
+        "dd_floor_breach_count": dd_floor_breach_count,
+        "dd_floor_breach_rate": dd_floor_breach_rate,
         "n_runs": int(len(df)),
+        "runs": runs,
     }
