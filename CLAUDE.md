@@ -181,7 +181,7 @@ Returned by `run_backtest`. **Note:** signal-layer columns (Signal_L1, MACD_*, e
 | `exporter.py` | Excel export for backtest results. |
 | `worst_case_simulator.py` | Synthetic worst-case data scenarios (separate concern from main backtest). |
 
-### Tests (115 passing, all under `tests/`)
+### Tests (153 passing, all under `tests/`)
 
 | File | Count | Covers |
 |---|---|---|
@@ -197,6 +197,7 @@ Returned by `run_backtest`. **Note:** signal-layer columns (Signal_L1, MACD_*, e
 | `test_signal_layers.py` | (existing) | Signal computation |
 | `test_signal_override_engine.py` | (existing) | Override decision unit tests (not integration) |
 | `test_tradable_allocation_and_backtest.py` | (existing) | Pre-IPO TQQQ proxy paths |
+| `test_cash_allocation.py` | 7 | CASH series compounding + end-to-end backtest + `enable_cash_in_regimes` + `forced_base_allocations` |
 
 ### Other
 
@@ -337,6 +338,15 @@ drawdown_window_enabled:   True
 drawdown_window_years:     1
 dividend_reinvestment:     False
 ```
+
+**Allocation universe:** the production config holds three risk sleeves
+(TQQQ / QQQ / XLU). The optimizer can additionally include a synthetic
+**CASH** ticker as a 4th allocation option — see `optimizer/parameter_space.py`
+(`CASH_TICKER`, `CASH_APY`). CASH is a daily-compounded risk-free series
+(default 4% APY) generated in `optimizer/score._build_cash_series`; it is
+opt-in via `IterationConstraints.enable_cash_in_regimes` (search) or
+`forced_base_allocations` (pin). CASH never appears in the base production
+config — it only enters when the optimizer explicitly asks for it.
 
 Regime thresholds (all match/match for clean follow logic):
 - **R1**: dd ∈ [0.00, 0.06) — 100% TQQQ

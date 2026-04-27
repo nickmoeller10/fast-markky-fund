@@ -22,10 +22,34 @@ os.environ.setdefault("FMF_DATA_MODE", "frozen")
 
 from backtest import run_backtest, compute_drawdown_from_ath  # noqa: E402
 from data_loader import load_price_data  # noqa: E402
-from optimizer.parameter_space import ALL_PANEL_TICKERS  # noqa: E402
+from optimizer.parameter_space import (  # noqa: E402
+    ALL_PANEL_TICKERS,
+    CASH_APY,
+    CASH_TICKER,
+)
 from regime_engine import determine_regime  # noqa: E402
 from rebalance_engine import rebalance_portfolio  # noqa: E402
 from utils import max_drawdown_from_equity_curve  # noqa: E402
+
+
+# Daily compounding factor for the synthetic CASH series. 252 trading days per
+# year is the convention used elsewhere in metrics. Compounding daily on
+# trading days keeps the series simple and matches how returns are sampled.
+_CASH_DAILY_FACTOR = (1.0 + CASH_APY) ** (1.0 / 252.0)
+
+
+def _build_cash_series(index: pd.DatetimeIndex) -> pd.Series:
+    """
+    Synthetic CASH price series: starts at 1.0 and compounds daily at
+    `_CASH_DAILY_FACTOR` so that an annualized return of `CASH_APY` is
+    earned over 252 trading days. Drawdown is exactly zero (monotonically
+    increasing) so CASH is a true risk-free sleeve in the backtest.
+    """
+    n = len(index)
+    if n == 0:
+        return pd.Series(dtype=float)
+    factors = np.power(_CASH_DAILY_FACTOR, np.arange(n, dtype=float))
+    return pd.Series(factors, index=index, name=CASH_TICKER)
 
 
 # Scoring coefficients (exposed for tuning)
@@ -46,8 +70,17 @@ def _load_panel(config: dict, full_start: str, full_end: str | None) -> pd.DataF
     Cached load of the panel. Always loads the full optimizer pool so the cache
     has a single entry per (start, end) shape — run_backtest will index just
     the tickers listed in config["tickers"], so extra columns are harmless.
+
+    If the config asks for a synthetic CASH ticker, append a CASH column
+    that starts at 1.0 and compounds daily at `CASH_APY` (see
+    `_build_cash_series`). CASH is always "tradable" since the price is
+    monotonically increasing and never NaN.
     """
-    return load_price_data(ALL_PANEL_TICKERS, full_start, end_date=full_end)
+    panel = load_price_data(ALL_PANEL_TICKERS, full_start, end_date=full_end)
+    if CASH_TICKER in (config.get("tickers") or []):
+        panel = panel.copy()
+        panel[CASH_TICKER] = _build_cash_series(panel.index)
+    return panel
 
 
 def _regime_distribution(eq: pd.DataFrame) -> dict[str, float]:

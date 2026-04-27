@@ -4,22 +4,35 @@ Defines the search space for the config optimizer.
 Suggests a complete CONFIG dict from an Optuna trial. The returned config
 is shape-compatible with config.CONFIG and consumed by run_backtest.
 
-Search axes (v2):
+Search axes (v3):
   - n_regimes ∈ {2, 3, 4, 5}: how many regimes the strategy uses
   - drawdown_window_years ∈ {1, 2, 3, 5}: rolling-peak window length
   - Up to 4 monotonically-increasing dd thresholds (only first n_regimes-1 used)
-  - Per-regime base allocation across {TQQQ, QQQ, XLU}
-  - Per-regime upside override (threshold + 3-ticker allocation)
-  - Per-regime protection override (threshold + 3-ticker allocation)
+  - Per-regime base allocation across {TQQQ, QQQ, XLU} — optionally extended
+    to include CASH when the regime is listed in
+    `IterationConstraints.enable_cash_in_regimes`
+  - Per-regime upside override (threshold + simplex allocation)
+  - Per-regime protection override (threshold + simplex allocation)
   - Per-regime rebalance_on_downward / rebalance_on_upward ∈ {match, hold}
 
 Fixed:
   - rebalance_strategy = "per_regime"
   - rebalance_frequency = "instant"
   - drawdown_ticker = "QQQ"
-  - allocation universe = {TQQQ, QQQ, XLU} only
-    (alt tickers like GLD/TLT/SPLV/BIL excluded — they don't backtest to
-    1999, which would bias the Monte Carlo entry-point evaluator.)
+  - allocation universe = {TQQQ, QQQ, XLU} by default; CASH joins per-regime
+    when explicitly enabled. (Alt tickers like GLD/TLT/SPLV/BIL excluded —
+    they don't backtest to 1999, which would bias the entry-point evaluator.)
+
+CASH semantics:
+  - CASH is a synthetic ticker (`CASH_TICKER = "CASH"`) with a daily-compounded
+    risk-free price series. Annualized return is `CASH_APY` (default 4%).
+  - The price series is generated in `optimizer.score._load_panel`. From the
+    backtester's perspective CASH is "always priced" so `tradable_allocation`
+    treats it like any other asset.
+  - There are TWO ways to put CASH in a regime:
+      1. `forced_base_allocations` — pin specific weights including CASH (strict).
+      2. `enable_cash_in_regimes` — add CASH as a 4th simplex coordinate so the
+         optimizer searches over CASH weight together with TQQQ/QQQ/XLU.
 """
 
 from __future__ import annotations
@@ -31,6 +44,9 @@ import optuna
 
 
 CORE_TICKERS = ("TQQQ", "QQQ", "XLU")
+CASH_TICKER = "CASH"  # synthetic risk-free sleeve, see CASH_APY
+CASH_APY = 0.04        # 4% annualized — proxy for 1999-2026 avg Fed funds
+ALL_TICKERS_INCL_CASH = CORE_TICKERS + (CASH_TICKER,)
 # All possible regime counts; ALWAYS sample params for MAX_REGIMES so the
 # search space is shape-stable. We just use only the first n_regimes worth.
 MIN_REGIMES = 2
@@ -54,7 +70,9 @@ class IterationConstraints:
       - force_zero_params=["R2_base_w_tqqq_raw"]    # zero out TQQQ in R2 base
       - upside_threshold_bounds={"R1": (3, 5)}      # require strong signal for R1 upside
       - rebalance_choices={"R2_rebalance_on_upward": ["hold"]}   # pin R2 hold-on-upward
-      - notes="Iter 2: validate user hypothesis that TQQQ should be 0 in R2 base"
+      - enable_cash_in_regimes=["R2", "R3"]         # add CASH to the simplex for R2/R3
+      - forced_base_allocations={"R2": {"XLU": 0.5, "CASH": 0.5}}  # pin a regime's base
+      - notes="Iter 10: search over CASH in R2/R3, look for tail-risk hedge"
     """
     n_regimes_choices: list[int] | None = None
     drawdown_window_choices: list[int] | None = None
@@ -63,6 +81,17 @@ class IterationConstraints:
     protection_threshold_bounds: dict[str, tuple[int, int]] = field(default_factory=dict)
     rebalance_choices: dict[str, list[str]] = field(default_factory=dict)
     force_zero_params: list[str] = field(default_factory=list)
+    weight_bounds: dict[str, tuple[float, float]] = field(default_factory=dict)
+    # Forced-allocation override per regime. Keys are regime names ("R1"..); values
+    # are dicts of ticker→weight (must sum to ~1.0). When set for a regime, the
+    # search-suggested base allocation is replaced with this fixed allocation.
+    # CASH is recognized as a pass-through ticker.
+    forced_base_allocations: dict[str, dict[str, float]] = field(default_factory=dict)
+    # Regimes for which the simplex sampling should include CASH as a 4th
+    # coordinate (TQQQ/QQQ/XLU/CASH instead of TQQQ/QQQ/XLU). Applies to base,
+    # upside override, and protection override panels for the listed regimes.
+    # Regimes NOT listed keep the legacy 3-ticker simplex (back-compat).
+    enable_cash_in_regimes: list[str] = field(default_factory=list)
     notes: str = ""
 
     def to_dict(self) -> dict:
@@ -73,7 +102,21 @@ class IterationConstraints:
         d["protection_threshold_bounds"] = {
             k: list(v) for k, v in d["protection_threshold_bounds"].items()
         }
+        d["weight_bounds"] = {k: list(v) for k, v in d["weight_bounds"].items()}
+        # forced_base_allocations and enable_cash_in_regimes are already JSON-friendly
         return d
+
+    def _uses_cash(self) -> bool:
+        """True if any regime references CASH (forced or via enable_cash_in_regimes)."""
+        if self.enable_cash_in_regimes:
+            return True
+        return any(
+            CASH_TICKER in alloc for alloc in self.forced_base_allocations.values()
+        )
+
+    def _cash_enabled_for(self, regime: str) -> bool:
+        """True if CASH should be a sampleable simplex coordinate for this regime."""
+        return regime in (self.enable_cash_in_regimes or [])
 
 
 def _bounds(name: str, default: tuple[float, float], constraints: IterationConstraints | None) -> tuple[float, float]:
@@ -98,26 +141,59 @@ def _int_bounds(
 def _suggest_weight(
     trial: optuna.Trial, name: str, constraints: IterationConstraints | None,
 ) -> float:
-    """Suggest a raw weight in [0, 1], honoring `force_zero_params`."""
-    if constraints is not None and name in constraints.force_zero_params:
-        return trial.suggest_float(name, 0.0, 0.0)
+    """Suggest a raw weight in [0, 1], honoring `force_zero_params` and `weight_bounds`."""
+    if constraints is not None:
+        if name in constraints.force_zero_params:
+            return trial.suggest_float(name, 0.0, 0.0)
+        if name in constraints.weight_bounds:
+            lo, hi = constraints.weight_bounds[name]
+            return trial.suggest_float(name, float(lo), float(hi))
     return trial.suggest_float(name, 0.0, 1.0)
+
+
+# Param-name suffix per ticker used in the simplex. Stable so Optuna's TPE
+# can transfer learning across trials and batches.
+_TICKER_SUFFIX = {
+    "TQQQ": "tqqq",
+    "QQQ": "qqq",
+    "XLU": "xlu",
+    "CASH": "cash",
+}
+
+
+def _suggest_simplex(
+    trial: optuna.Trial,
+    prefix: str,
+    constraints: IterationConstraints | None,
+    include_cash: bool,
+) -> dict[str, float]:
+    """
+    Suggest weights over {TQQQ, QQQ, XLU} (and CASH when include_cash=True)
+    that sum to 1.0. Returned dict always includes all sampled tickers; CASH
+    key is omitted when include_cash=False (back-compat with legacy 3-ticker
+    blocks downstream).
+    """
+    tickers: tuple[str, ...] = CORE_TICKERS + ((CASH_TICKER,) if include_cash else ())
+    raw: dict[str, float] = {}
+    for t in tickers:
+        param_name = f"{prefix}_w_{_TICKER_SUFFIX[t]}_raw"
+        raw[t] = _suggest_weight(trial, param_name, constraints)
+    s = sum(raw.values())
+    if s <= 1e-9:
+        # Degenerate sample (e.g. all forced to zero). Pick a deterministic fallback.
+        if constraints and f"{prefix}_w_tqqq_raw" in constraints.force_zero_params:
+            fallback = "QQQ"
+        else:
+            fallback = "TQQQ"
+        return {t: (1.0 if t == fallback else 0.0) for t in tickers}
+    return {t: raw[t] / s for t in tickers}
 
 
 def _suggest_simplex_3(
     trial: optuna.Trial, prefix: str, constraints: IterationConstraints | None,
 ) -> dict[str, float]:
-    """Suggest 3 weights in {TQQQ, QQQ, XLU} that sum to 1.0."""
-    a = _suggest_weight(trial, f"{prefix}_w_tqqq_raw", constraints)
-    b = _suggest_weight(trial, f"{prefix}_w_qqq_raw", constraints)
-    c = _suggest_weight(trial, f"{prefix}_w_xlu_raw", constraints)
-    s = a + b + c
-    if s <= 1e-9:
-        # If TQQQ was forced to zero AND simplex collapsed, fall back to QQQ-only
-        if constraints and f"{prefix}_w_tqqq_raw" in constraints.force_zero_params:
-            return {"TQQQ": 0.0, "QQQ": 1.0, "XLU": 0.0}
-        return {"TQQQ": 1.0, "QQQ": 0.0, "XLU": 0.0}
-    return {"TQQQ": a / s, "QQQ": b / s, "XLU": c / s}
+    """Back-compat shim: 3-ticker simplex over {TQQQ, QQQ, XLU}."""
+    return _suggest_simplex(trial, prefix, constraints, include_cash=False)
 
 
 def _suggest_regime_block(
@@ -127,9 +203,19 @@ def _suggest_regime_block(
     dd_high: float,
     constraints: IterationConstraints | None = None,
 ) -> dict[str, Any]:
-    base = _suggest_simplex_3(trial, f"{regime}_base", constraints)
-    upside = _suggest_simplex_3(trial, f"{regime}_upside", constraints)
-    protection = _suggest_simplex_3(trial, f"{regime}_protection", constraints)
+    cash_enabled = constraints is not None and constraints._cash_enabled_for(regime)
+
+    # Always sample (keeps Optuna's search space shape stable across trials,
+    # even when forced_base_allocations would discard the base sample).
+    base = _suggest_simplex(trial, f"{regime}_base", constraints, include_cash=cash_enabled)
+    upside = _suggest_simplex(trial, f"{regime}_upside", constraints, include_cash=cash_enabled)
+    protection = _suggest_simplex(trial, f"{regime}_protection", constraints, include_cash=cash_enabled)
+
+    # If a forced base allocation is configured for this regime, replace the
+    # sampled base with the fixed weights. Optuna's TPE doesn't care that the
+    # sampled raw weights are unused — it just learns to ignore them.
+    if constraints and regime in constraints.forced_base_allocations:
+        base = dict(constraints.forced_base_allocations[regime])
 
     up_lo, up_hi = _int_bounds("upside", regime, (1, 5), constraints)
     pr_lo, pr_hi = _int_bounds("protection", regime, (-5, -1), constraints)
@@ -171,6 +257,21 @@ def _suggest_regime_block(
     }
     for t in CORE_TICKERS:
         block[t] = float(base.get(t, 0.0))
+
+    # Carry CASH onto every panel (base + overrides) when this regime references it.
+    # CASH may show up via:
+    #   - the simplex (cash_enabled): all three panels sampled it
+    #   - a forced_base_allocations entry: only the base has it, but to keep the
+    #     schema consistent we add 0.0 onto the override panels too.
+    base_has_cash = CASH_TICKER in base
+    if cash_enabled or base_has_cash:
+        block[CASH_TICKER] = float(base.get(CASH_TICKER, 0.0))
+        block["signal_overrides"]["upside"][CASH_TICKER] = float(
+            upside.get(CASH_TICKER, 0.0)
+        )
+        block["signal_overrides"]["protection"][CASH_TICKER] = float(
+            protection.get(CASH_TICKER, 0.0)
+        )
     return block
 
 
@@ -233,6 +334,13 @@ def suggest_config(
         block["dd_high"] = thresholds[i] if i < n_regimes - 1 else 1.0
         regimes[f"R{i + 1}"] = block
 
+    uses_cash = constraints is not None and constraints._uses_cash()
+    panel_tickers = list(ALL_PANEL_TICKERS)
+    alloc_tickers = list(CORE_TICKERS)
+    if uses_cash:
+        panel_tickers.append(CASH_TICKER)
+        alloc_tickers.append(CASH_TICKER)
+
     return {
         "starting_balance": 10_000,
         "start_date": "1999-01-04",
@@ -245,8 +353,8 @@ def suggest_config(
         "rebalance_strategy": "per_regime",
         "dividend_reinvestment": False,
         "dividend_reinvestment_target": "cash",
-        "tickers": list(ALL_PANEL_TICKERS),
-        "allocation_tickers": list(CORE_TICKERS),
+        "tickers": panel_tickers,
+        "allocation_tickers": alloc_tickers,
         "minimum_allocation": 0.0,
         "regimes": regimes,
     }

@@ -75,6 +75,9 @@ def _load_constraints(path: str | None) -> IterationConstraints | None:
         },
         rebalance_choices=d.get("rebalance_choices") or {},
         force_zero_params=d.get("force_zero_params") or [],
+        weight_bounds={k: tuple(v) for k, v in (d.get("weight_bounds") or {}).items()},
+        forced_base_allocations=d.get("forced_base_allocations") or {},
+        enable_cash_in_regimes=d.get("enable_cash_in_regimes") or [],
         notes=d.get("notes", ""),
     )
     return cons
