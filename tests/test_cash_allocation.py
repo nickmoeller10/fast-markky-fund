@@ -25,7 +25,7 @@ import pytest
 @pytest.mark.unit
 def test_cash_series_compounds_at_target_apy():
     from optimizer.parameter_space import CASH_APY
-    from optimizer.score import _build_cash_series
+    from data_loader import _build_cash_series
 
     # 252 trading days = exactly 1 year of compounding
     idx = pd.bdate_range("2000-01-03", periods=252)
@@ -46,7 +46,7 @@ def test_cash_series_compounds_at_target_apy():
 @pytest.mark.unit
 def test_cash_series_is_monotonically_increasing_zero_drawdown():
     """CASH must never lose value — drawdown is identically zero."""
-    from optimizer.score import _build_cash_series
+    from data_loader import _build_cash_series
 
     idx = pd.bdate_range("2000-01-03", periods=2000)
     series = _build_cash_series(idx)
@@ -67,7 +67,7 @@ def test_run_backtest_handles_cash_in_allocation(price_fixture):
     """
     from backtest import run_backtest, compute_drawdown_from_ath
     from optimizer.parameter_space import CASH_APY, CASH_TICKER
-    from optimizer.score import _build_cash_series
+    from data_loader import _build_cash_series
     from rebalance_engine import rebalance_portfolio
     from regime_engine import determine_regime
 

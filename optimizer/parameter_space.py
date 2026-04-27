@@ -43,9 +43,12 @@ from typing import Any
 import optuna
 
 
+# CASH constants live in data_loader (single source of truth) — both "CASH"
+# and "$" are recognized as synthetic MMF aliases. Re-export here for
+# backward-compat callers that imported from parameter_space.
+from data_loader import CASH_TICKER, CASH_APY, CASH_ALIASES, DOLLAR_TICKER  # noqa: E402
+
 CORE_TICKERS = ("TQQQ", "QQQ", "XLU")
-CASH_TICKER = "CASH"  # synthetic risk-free sleeve, see CASH_APY
-CASH_APY = 0.04        # 4% annualized — proxy for 1999-2026 avg Fed funds
 ALL_TICKERS_INCL_CASH = CORE_TICKERS + (CASH_TICKER,)
 # All possible regime counts; ALWAYS sample params for MAX_REGIMES so the
 # search space is shape-stable. We just use only the first n_regimes worth.

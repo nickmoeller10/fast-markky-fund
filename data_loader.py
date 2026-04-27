@@ -7,6 +7,68 @@ import numpy as np
 import pandas as pd
 
 
+# ---------------------------------------------------------------------------
+# Synthetic ticker registry
+# ---------------------------------------------------------------------------
+# These tickers are NEVER fetched from yfinance — they're injected as
+# locally-generated price series after real data is loaded. This is critical
+# because some labels (e.g. "CASH" → Pathward Financial Inc.) ARE real
+# yfinance tickers; sending them to yfinance would silently return real
+# equity data with normal drawdown.
+#
+# `CASH_TICKER` and `DOLLAR_TICKER` are synonyms for a synthetic money-market-fund
+# proxy. Either label can appear in `config["tickers"]` / `allocation_tickers`
+# and produces the same daily-compounded zero-drawdown series. We support
+# both because "CASH" is a real yfinance ticker (Pathward Financial Inc.) —
+# users may prefer `"$"` to make it visually clear it's not a real equity.
+CASH_TICKER = "CASH"
+DOLLAR_TICKER = "$"
+CASH_ALIASES = frozenset({CASH_TICKER, DOLLAR_TICKER})
+CASH_APY = 0.04  # ~Fed-funds-average proxy over 1999-2026
+SYNTHETIC_TICKERS = CASH_ALIASES
+
+
+def _build_cash_series(index: pd.DatetimeIndex, name: str = CASH_TICKER) -> pd.Series:
+    """
+    Daily-compounded synthetic MMF price series.
+    Starts at 1.0; multiplies by (1 + CASH_APY)^(1/252) each trading day.
+    Drawdown is identically zero (monotonically increasing) — a true
+    risk-free sleeve. Earned annualized return = CASH_APY.
+    """
+    n = len(index)
+    if n == 0:
+        return pd.Series(dtype=float, name=name)
+    daily_factor = (1.0 + CASH_APY) ** (1.0 / 252.0)
+    factors = np.power(daily_factor, np.arange(n, dtype=float))
+    return pd.Series(factors, index=index, name=name)
+
+
+def _split_real_and_synthetic(tickers):
+    """Return (real_tickers_list, synthetic_tickers_list) preserving order."""
+    real, synthetic = [], []
+    for t in tickers:
+        if t in SYNTHETIC_TICKERS:
+            synthetic.append(t)
+        else:
+            real.append(t)
+    return real, synthetic
+
+
+def _attach_synthetic_columns(price_df, synthetic_tickers):
+    """Add synthetic ticker columns to a DataFrame indexed by trading dates."""
+    if not synthetic_tickers:
+        return price_df
+    out = price_df.copy()
+    for t in synthetic_tickers:
+        if t in CASH_ALIASES:
+            # Both "CASH" and "$" produce the same MMF-style series, but the
+            # column is named exactly as requested so configs / output stay consistent.
+            out[t] = _build_cash_series(out.index, name=t)
+        else:
+            raise ValueError(f"Unknown synthetic ticker: {t}")
+    return out
+
+
 def normalize_close_columns(closes):
     """
     yfinance often returns a Close block with MultiIndex columns ('Close', 'QQQ').
@@ -50,28 +112,48 @@ def yf_close_to_series(close_block, ticker_hint=None):
 def load_price_data(tickers, start_date, end_date=None, include_dividends=False):
     """
     Load price data from Yahoo Finance.
-    
+
+    Synthetic tickers (CASH / $) are NEVER sent to yfinance — they are
+    locally generated and appended to the result. This is critical because
+    "CASH" is a real yfinance ticker (Pathward Financial Inc.).
+
     Args:
         tickers: List of ticker symbols
         start_date: Start date string
         end_date: End date string or None for current date
         include_dividends: If True, also download and return dividend data
-    
+
     Returns:
         If include_dividends=False: DataFrame with Close prices
         If include_dividends=True: Tuple of (price_df, dividend_df)
     """
+    real_tickers, synthetic_tickers = _split_real_and_synthetic(list(tickers))
+
+    if not real_tickers:
+        # All synthetic — build an index from start_date to end_date with bdate_range
+        idx_end = end_date or datetime.today().strftime("%Y-%m-%d")
+        idx = pd.bdate_range(start_date, idx_end)
+        empty = pd.DataFrame(index=idx)
+        closes = _attach_synthetic_columns(empty, synthetic_tickers)
+        if not include_dividends:
+            return closes
+        return closes, pd.DataFrame(index=closes.index, columns=tickers).fillna(0.0)
+
     if end_date is None:
-        log(f"Downloading price data for: {tickers}, starting {start_date} (end: current date)")
-        data = cached_yf_download(tickers, start=start_date, auto_adjust=True)
+        log(f"Downloading price data for: {real_tickers}, starting {start_date} (end: current date)")
+        data = cached_yf_download(real_tickers, start=start_date, auto_adjust=True)
     else:
-        log(f"Downloading price data for: {tickers}, from {start_date} to {end_date}")
-        data = cached_yf_download(tickers, start=start_date, end=end_date, auto_adjust=True)
+        log(f"Downloading price data for: {real_tickers}, from {start_date} to {end_date}")
+        data = cached_yf_download(real_tickers, start=start_date, end=end_date, auto_adjust=True)
 
     log(f"Download complete. Shape: {data.shape}")
     closes = data["Close"].dropna(how="all")
     closes = normalize_close_columns(closes)
     log(f"Cleaned price data shape: {closes.shape}")
+
+    # Inject synthetic columns AFTER the yfinance fetch so they can never
+    # be silently swapped for real-equity data (e.g. "CASH" → Pathward Financial).
+    closes = _attach_synthetic_columns(closes, synthetic_tickers)
 
     if not include_dividends:
         return closes
@@ -80,6 +162,11 @@ def load_price_data(tickers, start_date, end_date=None, include_dividends=False)
     log("Downloading dividend data...")
     dividend_data = {}
     for ticker in tickers:
+        # Synthetic tickers have no dividends — skip the yfinance lookup so we
+        # never accidentally fetch a real same-named ticker (e.g. "CASH").
+        if ticker in SYNTHETIC_TICKERS:
+            dividend_data[ticker] = pd.Series(dtype=float)
+            continue
         try:
             ticker_obj = yf.Ticker(ticker)
             hist = ticker_obj.history(start=start_date, end=end_date if end_date else None)
