@@ -112,7 +112,7 @@ def test_score_returns_error_on_empty_panel():
 def test_parameter_space_produces_valid_config():
     """A trial drawn from the search space must be shape-compatible with run_backtest."""
     import optuna
-    from optimizer.parameter_space import suggest_config
+    from optimizer.parameter_space import suggest_config, MIN_REGIMES, MAX_REGIMES
 
     study = optuna.create_study(direction="maximize")
     trial = study.ask()
@@ -122,22 +122,29 @@ def test_parameter_space_produces_valid_config():
     for k in ("starting_balance", "drawdown_ticker", "tickers", "allocation_tickers", "regimes"):
         assert k in config
 
-    # Three regimes with proper structure
-    assert set(config["regimes"]) == {"R1", "R2", "R3"}
-    for r in ("R1", "R2", "R3"):
-        block = config["regimes"][r]
+    # Variable regime count (2..5), names always R1..Rn
+    n = len(config["regimes"])
+    assert MIN_REGIMES <= n <= MAX_REGIMES
+    assert set(config["regimes"]) == {f"R{i + 1}" for i in range(n)}
+
+    for i in range(n):
+        block = config["regimes"][f"R{i + 1}"]
         assert "dd_low" in block and "dd_high" in block
         assert block["rebalance_on_downward"] in ("match", "hold")
         assert block["rebalance_on_upward"] in ("match", "hold")
         assert "signal_overrides" in block
-        # Core ticker weights present
+        # Only core tickers in the allocation universe
         for t in ("TQQQ", "QQQ", "XLU"):
             assert t in block
 
-    # Thresholds non-overlapping
-    assert config["regimes"]["R1"]["dd_high"] == config["regimes"]["R2"]["dd_low"]
-    assert config["regimes"]["R2"]["dd_high"] == config["regimes"]["R3"]["dd_low"]
-    assert config["regimes"]["R3"]["dd_high"] == 1.0
+    # Thresholds form a contiguous, monotonically-increasing partition of [0, 1]
+    assert config["regimes"]["R1"]["dd_low"] == 0.0
+    for i in range(n - 1):
+        cur = config["regimes"][f"R{i + 1}"]
+        nxt = config["regimes"][f"R{i + 2}"]
+        assert cur["dd_high"] == nxt["dd_low"]
+        assert cur["dd_high"] > cur["dd_low"]
+    assert config["regimes"][f"R{n}"]["dd_high"] == 1.0
 
     # drawdown_window_years from the categorical set
     assert config["drawdown_window_years"] in (1, 2, 3, 5)
@@ -146,6 +153,24 @@ def test_parameter_space_produces_valid_config():
     assert config["rebalance_strategy"] == "per_regime"
     assert config["rebalance_frequency"] == "instant"
 
-    # Allocation tickers always include the core 3
-    for t in ("TQQQ", "QQQ", "XLU"):
-        assert t in config["allocation_tickers"]
+    # Allocation universe restricted to core 3 — no alt tickers
+    assert set(config["allocation_tickers"]) == {"TQQQ", "QQQ", "XLU"}
+
+
+@pytest.mark.unit
+def test_parameter_space_explores_all_regime_counts():
+    """Across many trials, all regime counts in {2,3,4,5} are reachable."""
+    import optuna
+    from optimizer.parameter_space import suggest_config
+
+    study = optuna.create_study(direction="maximize")
+    seen = set()
+    for _ in range(50):
+        trial = study.ask()
+        cfg = suggest_config(trial)
+        seen.add(len(cfg["regimes"]))
+        # Pretend the trial succeeded so the sampler keeps evolving
+        study.tell(trial, 0.0)
+    assert seen.issubset({2, 3, 4, 5})
+    # At least 3 different regime counts should appear in 50 trials
+    assert len(seen) >= 3

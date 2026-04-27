@@ -36,9 +36,12 @@ OPTIMIZER_DIR = Path(__file__).resolve().parent.parent / "optimizer_runs"
 
 
 def _list_studies() -> list[str]:
+    """Discover studies via SQLite (live) OR parquet (post-run snapshot)."""
     if not OPTIMIZER_DIR.exists():
         return []
     studies = set()
+    for f in OPTIMIZER_DIR.glob("*.db"):
+        studies.add(f.stem)
     for f in OPTIMIZER_DIR.glob("*_results.parquet"):
         studies.add(f.name.replace("_results.parquet", ""))
     return sorted(studies)

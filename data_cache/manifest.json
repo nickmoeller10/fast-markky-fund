@@ -47,14 +47,54 @@
     },
     "yfinance_version": "0.2.66"
   },
+  "QQQ_SPY_TQQQ_XLU__1d2e3fc9e273.pkl": {
+    "end": "2026-03-27",
+    "fetched_at": "2026-04-27T04:43:17.286298+00:00",
+    "first_date": "1999-01-04",
+    "last_date": "2026-03-26",
+    "python_version": "3.10.11",
+    "row_count": 6849,
+    "sha256": "cdb87d1c00e095fea1095b490204371504dfb5443a19e50de63e317258fe4bf1",
+    "start": "1999-01-04",
+    "tickers": [
+      "QQQ",
+      "SPY",
+      "TQQQ",
+      "XLU"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "QQQ_SPY_TQQQ_XLU__3b5dbe87638e.pkl": {
+    "end": null,
+    "fetched_at": "2026-04-27T04:43:16.801950+00:00",
+    "first_date": "1999-01-04",
+    "last_date": "2026-04-24",
+    "python_version": "3.10.11",
+    "row_count": 6869,
+    "sha256": "6aee43ddd2195fc39032bb22dc408a113ab432bf587ac001c37d21cd1c6cb166",
+    "start": "1999-01-04",
+    "tickers": [
+      "QQQ",
+      "SPY",
+      "TQQQ",
+      "XLU"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True"
+    },
+    "yfinance_version": "0.2.66"
+  },
   "QQQ__770e9520b070.pkl": {
     "end": null,
-    "fetched_at": "2026-04-27T01:19:44.277223+00:00",
+    "fetched_at": "2026-04-27T04:43:17.766093+00:00",
     "first_date": "1999-03-10",
     "last_date": "2026-04-24",
     "python_version": "3.10.11",
     "row_count": 6824,
-    "sha256": "6991594ff23b8eefaa5e1d9595dd64c9a28db5156f44f74853bee322878d7986",
+    "sha256": "574abad87c2fbf12d6015b3a519f37bce68b30f53047d42a97aad3de42192f74",
     "start": "1980-01-01",
     "tickers": [
       "QQQ"
@@ -85,12 +125,12 @@
   },
   "SPY__4f3cafb1927a.pkl": {
     "end": null,
-    "fetched_at": "2026-04-27T01:19:44.841679+00:00",
+    "fetched_at": "2026-04-27T04:43:18.122794+00:00",
     "first_date": "1996-01-02",
     "last_date": "2026-04-24",
     "python_version": "3.10.11",
     "row_count": 7628,
-    "sha256": "ff990e195e9504b32d3474e39b0c9c1b71d63785e701efa67db6039bf83397c5",
+    "sha256": "9ac2dbd61561c3eb1de5244a2c5b775716eb3ebdce7d6a645359a84a8e5e0922",
     "start": "1996-01-01",
     "tickers": [
       "SPY"
@@ -148,6 +188,60 @@
     "start": "2015-10-25",
     "tickers": [
       "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__f6c5d435a07b.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-27T03:09:25.788640+00:00",
+    "first_date": "2009-02-24",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 4300,
+    "sha256": "4a3182c1c2947b689a4adf05e118b51a4e5e06b25fe4fddce5cb94a34f1dfdbc",
+    "start": "2009-02-24",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__17ecdb8a0802.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-27T03:09:27.410883+00:00",
+    "first_date": "2011-05-05",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 3746,
+    "sha256": "0e19861cb12548d124f6f6b54503032d159733f8155babf0521e14a8296e7506",
+    "start": "2011-05-05",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__5e4e15a35172.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-27T03:09:26.025641+00:00",
+    "first_date": "2009-02-24",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 4300,
+    "sha256": "995401a2a643958d782671e68ee093ae36c7f91a9ac198240e14d00ef649b8d3",
+    "start": "2009-02-24",
+    "tickers": [
+      "^VIX"
     ],
     "yf_kwargs": {
       "auto_adjust": "True",
@@ -229,7 +323,7 @@
   },
   "VIX__ee60f25793fe.pkl": {
     "end": null,
-    "fetched_at": "2026-04-27T01:19:45.218891+00:00",
+    "fetched_at": "2026-04-27T04:43:18.447168+00:00",
     "first_date": "1996-01-02",
     "last_date": "2026-04-24",
     "python_version": "3.10.11",

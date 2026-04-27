@@ -24,10 +24,13 @@ from config import CONFIG   # noqa: E402
 from data_cache import cached_yf_download, cache_status   # noqa: E402
 from data_loader import load_price_data, load_spy_series, load_vix_series   # noqa: E402
 
-# Production tickers (from config.py)
+# Production tickers (from config.py). The optimizer's allocation universe
+# is restricted to {TQQQ, QQQ, XLU} — alt tickers like TLT/GLD/SPLV/BIL
+# don't backtest to 1999 (BIL only goes to 2007), which would bias the
+# Monte Carlo entry-point evaluator. SPY is always loaded for signal
+# layer warmup.
 PRODUCTION_TICKERS = ["QQQ", "TQQQ", "XLU", "SPY"]
-# Alternative tickers the optimizer may include in candidate configs
-OPTIMIZER_ALTERNATIVES = ["TLT", "GLD", "SPLV", "BIL"]
+OPTIMIZER_ALTERNATIVES: list[str] = []
 # Drawdown ticker (its full history is downloaded separately by run_backtest)
 DRAWDOWN_TICKER = "QQQ"
 

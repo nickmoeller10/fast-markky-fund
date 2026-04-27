@@ -10,15 +10,33 @@ from pathlib import Path
 import pandas as pd
 
 
+def _default_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "optimizer_runs"
+
+
 def load_results(study_name: str, output_dir: Path | str | None = None) -> pd.DataFrame:
-    """Load a study's per-trial results parquet."""
-    base = Path(output_dir) if output_dir else (
-        Path(__file__).resolve().parent.parent / "optimizer_runs"
-    )
-    path = base / f"{study_name}_results.parquet"
-    if not path.exists():
-        raise FileNotFoundError(f"No results file at {path}")
-    df = pd.read_parquet(path)
+    """
+    Load a study's per-trial results.
+
+    Prefers the live Optuna SQLite db (always up to date — works while a
+    search is still running). Falls back to the post-run parquet snapshot
+    if no SQLite is present.
+    """
+    base = Path(output_dir) if output_dir else _default_dir()
+    db = base / f"{study_name}.db"
+    parquet = base / f"{study_name}_results.parquet"
+
+    if db.exists():
+        import optuna
+        storage = f"sqlite:///{db}"
+        study = optuna.load_study(study_name=study_name, storage=storage)
+        df = study.trials_dataframe(
+            attrs=("number", "value", "state", "params", "user_attrs")
+        )
+    elif parquet.exists():
+        df = pd.read_parquet(parquet)
+    else:
+        raise FileNotFoundError(f"No SQLite db or parquet for study '{study_name}' in {base}")
 
     # Promote user_attrs.* columns into top-level
     for c in list(df.columns):
