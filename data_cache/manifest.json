@@ -1,12 +1,36 @@
 {
   "BIL_GLD_QQQ_SPLV_SPY_TLT_TQQQ_XLU__650663bc2513.pkl": {
     "end": null,
-    "fetched_at": "2026-04-27T00:24:47.867776+00:00",
+    "fetched_at": "2026-04-27T01:19:43.138709+00:00",
     "first_date": "1999-01-04",
     "last_date": "2026-04-24",
     "python_version": "3.10.11",
     "row_count": 6869,
-    "sha256": "44a933a841a0d1137f1bc5831a0a0c843b794d231f2ad759a4fa451e5ab1525d",
+    "sha256": "3829eefec35921b59d1541d4879bf70531a91fe844e8f7c9c513d48cf3be32eb",
+    "start": "1999-01-04",
+    "tickers": [
+      "BIL",
+      "GLD",
+      "QQQ",
+      "SPLV",
+      "SPY",
+      "TLT",
+      "TQQQ",
+      "XLU"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "BIL_GLD_QQQ_SPLV_SPY_TLT_TQQQ_XLU__e48123723518.pkl": {
+    "end": "2026-03-27",
+    "fetched_at": "2026-04-27T01:19:43.733549+00:00",
+    "first_date": "1999-01-04",
+    "last_date": "2026-03-26",
+    "python_version": "3.10.11",
+    "row_count": 6849,
+    "sha256": "58a669dea2ee02e7f2df6ca48db767a296fd4da62e03d96d43416ea3a498096a",
     "start": "1999-01-04",
     "tickers": [
       "BIL",
@@ -25,12 +49,12 @@
   },
   "QQQ__770e9520b070.pkl": {
     "end": null,
-    "fetched_at": "2026-04-27T00:24:48.282883+00:00",
+    "fetched_at": "2026-04-27T01:19:44.277223+00:00",
     "first_date": "1999-03-10",
     "last_date": "2026-04-24",
     "python_version": "3.10.11",
     "row_count": 6824,
-    "sha256": "e5559bff090f4b25d573295d7edf3eb3afe8c8c450b373727a68b4f810d5bebd",
+    "sha256": "6991594ff23b8eefaa5e1d9595dd64c9a28db5156f44f74853bee322878d7986",
     "start": "1980-01-01",
     "tickers": [
       "QQQ"
@@ -61,12 +85,12 @@
   },
   "SPY__4f3cafb1927a.pkl": {
     "end": null,
-    "fetched_at": "2026-04-27T00:24:48.708745+00:00",
+    "fetched_at": "2026-04-27T01:19:44.841679+00:00",
     "first_date": "1996-01-02",
     "last_date": "2026-04-24",
     "python_version": "3.10.11",
     "row_count": 7628,
-    "sha256": "469efe8eb0be07edc9f048d7c2c03597bc984ce63eb6a1914a89f25bdbcc3b77",
+    "sha256": "ff990e195e9504b32d3474e39b0c9c1b71d63785e701efa67db6039bf83397c5",
     "start": "1996-01-01",
     "tickers": [
       "SPY"
@@ -205,7 +229,7 @@
   },
   "VIX__ee60f25793fe.pkl": {
     "end": null,
-    "fetched_at": "2026-04-27T00:24:48.971205+00:00",
+    "fetched_at": "2026-04-27T01:19:45.218891+00:00",
     "first_date": "1996-01-02",
     "last_date": "2026-04-24",
     "python_version": "3.10.11",

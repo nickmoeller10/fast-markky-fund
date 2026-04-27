@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 # Force refresh mode for the entire freeze run
 os.environ["FMF_DATA_MODE"] = "refresh"
 
+from config import CONFIG   # noqa: E402
 from data_cache import cached_yf_download, cache_status   # noqa: E402
 from data_loader import load_price_data, load_spy_series, load_vix_series   # noqa: E402
 
@@ -32,7 +33,9 @@ DRAWDOWN_TICKER = "QQQ"
 
 # Date ranges
 PANEL_START = "1999-01-04"
-PANEL_END_OPEN = None      # None = "current date"; freeze captures everything available
+# Capture BOTH the open-ended fetch (for app.py runtime "data through today")
+# AND a fixed-end fetch matching CONFIG["end_date"] (for optimizer reproducibility).
+PANEL_END_FIXED = CONFIG.get("end_date", "2026-03-27")
 SIGNAL_HISTORY_START = "1996-01-01"  # ~3y buffer before panel for 252d/200d warmups
 HISTORICAL_INCEPTION_START = "1980-01-01"   # for QQQ pre-portfolio history
 
@@ -43,13 +46,17 @@ def main() -> None:
     print(f"Mode: {os.environ['FMF_DATA_MODE']}")
     print("=" * 70)
 
-    # 1. Production panel + alternative tickers (open-ended end → snapshot to today)
+    # 1. Production panel + alternative tickers (open-ended → snapshot to today)
     all_panel_tickers = sorted(set(PRODUCTION_TICKERS) | set(OPTIMIZER_ALTERNATIVES))
-    print(f"\n[1/4] Panel data — {all_panel_tickers}, {PANEL_START} → today")
-    load_price_data(all_panel_tickers, PANEL_START, end_date=PANEL_END_OPEN)
+    print(f"\n[1a/5] Panel data (open-ended) — {all_panel_tickers}, {PANEL_START} → today")
+    load_price_data(all_panel_tickers, PANEL_START, end_date=None)
 
-    # 2. Drawdown-ticker historical (1980→today) used by backtest.py:600
-    print(f"\n[2/4] Historical drawdown data — {DRAWDOWN_TICKER} from {HISTORICAL_INCEPTION_START}")
+    # 2. Same panel, fixed end_date (matches CONFIG["end_date"]) → optimizer reproducibility
+    print(f"\n[1b/5] Panel data (fixed end) — {all_panel_tickers}, {PANEL_START} → {PANEL_END_FIXED}")
+    load_price_data(all_panel_tickers, PANEL_START, end_date=PANEL_END_FIXED)
+
+    # 3. Drawdown-ticker historical (1980→today) used by backtest.py:600
+    print(f"\n[2/5] Historical drawdown data — {DRAWDOWN_TICKER} from {HISTORICAL_INCEPTION_START}")
     cached_yf_download(
         DRAWDOWN_TICKER,
         start=HISTORICAL_INCEPTION_START,
@@ -58,12 +65,12 @@ def main() -> None:
         progress=False,
     )
 
-    # 3. Extended SPY for signal layer warmup
-    print(f"\n[3/4] SPY signal history — from {SIGNAL_HISTORY_START}")
+    # 4. Extended SPY for signal layer warmup
+    print(f"\n[3/5] SPY signal history — from {SIGNAL_HISTORY_START}")
     load_spy_series(SIGNAL_HISTORY_START, end_date=None)
 
-    # 4. Extended VIX for signal layer warmup
-    print(f"\n[4/4] VIX signal history — from {SIGNAL_HISTORY_START}")
+    # 5. Extended VIX for signal layer warmup
+    print(f"\n[4/5] VIX signal history — from {SIGNAL_HISTORY_START}")
     load_vix_series(SIGNAL_HISTORY_START, end_date=None)
 
     print("\n" + "=" * 70)

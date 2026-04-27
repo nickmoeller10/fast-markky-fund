@@ -164,3 +164,40 @@ def test_invalid_mode_raises():
 
     with pytest.raises(ValueError, match="Invalid mode"):
         cached_yf_download("QQQ", start="2020-01-01", mode="bogus")
+
+
+@pytest.mark.unit
+def test_subsumption_serves_narrower_range_from_wider_cache(isolated_cache):
+    """A frozen request for [B, C] succeeds if [A, D] is cached with A<=B and D>=C."""
+    from data_cache import cached_yf_download
+
+    wide = pd.DataFrame(
+        {"Close": list(range(100))},
+        index=pd.bdate_range("2020-01-02", periods=100),
+    )
+    # Populate the wide range via auto mode
+    with patch("data_cache.yf.download", return_value=wide):
+        cached_yf_download("QQQ", start="2020-01-01", end="2021-01-01", auto_adjust=True)
+
+    # Now request a narrower window in frozen mode — should slice from the wider entry
+    with patch("data_cache.yf.download") as mock_dl:
+        narrow = cached_yf_download(
+            "QQQ", start="2020-02-01", end="2020-04-01", auto_adjust=True, mode="frozen"
+        )
+    mock_dl.assert_not_called()
+    assert isinstance(narrow, pd.DataFrame)
+    assert narrow.index.min() >= pd.Timestamp("2020-02-01")
+    assert narrow.index.max() < pd.Timestamp("2020-04-01")
+
+
+@pytest.mark.unit
+def test_subsumption_does_not_serve_from_unrelated_cache(isolated_cache):
+    """If no superset cache exists, frozen mode still raises."""
+    from data_cache import cached_yf_download
+
+    with patch("data_cache.yf.download", return_value=_fake_df()):
+        cached_yf_download("QQQ", start="2020-01-01", end="2020-12-31")
+
+    # Different ticker, frozen mode → must raise
+    with pytest.raises(RuntimeError, match="frozen but cache miss"):
+        cached_yf_download("XLU", start="2020-01-01", end="2020-12-31", mode="frozen")
