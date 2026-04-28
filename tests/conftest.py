@@ -129,3 +129,28 @@ def equity_series_fixture():
 def equity_from_values():
     """Factory: returns make_equity_df_from_values."""
     return make_equity_df_from_values
+
+
+import copy as _copy
+
+
+@pytest.fixture(scope="module")
+def production_config_dict():
+    """Deep copy of the live production config from config.py.
+
+    Tests should mutate the copy freely; conftest hands out a fresh one per test.
+    Use this when you need to exercise the *actual* production path (per_regime,
+    rolling DD window, all 4 allocation tickers including '$', enabled R1
+    overrides, etc.) — not a hand-rolled minimal subset.
+    """
+    from config import CONFIG
+    return _copy.deepcopy(CONFIG)
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--bootstrap",
+        action="store_true",
+        default=False,
+        help="Enable bootstrap helpers in locked-regression tests.",
+    )
