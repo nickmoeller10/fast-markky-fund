@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from allocation_engine import get_allocation_for_regime, tradable_allocation
 from data_loader import yf_close_to_series
+from regime_engine import compute_drawdown_from_ath
 from signal_layers import (
     build_combined_spy_series,
     build_combined_vix_series,
@@ -13,6 +14,7 @@ from signal_override_engine import (
     get_target_allocation_for_override,
     describe_signal_override_row,
     validate_panel_sums,
+    any_override_enabled,
 )
 from utils import log
 
@@ -105,14 +107,8 @@ def calculate_normalized_values(price_df, tickers, starting_val, start_date):
 # ------------------------------------------------------------
 # Drawdown from ATH
 # ------------------------------------------------------------
-def compute_drawdown_from_ath(series):
-    """
-    Calculate drawdown from all-time high.
-    Uses cummax() which calculates ATH from the beginning of the series.
-    """
-    ath = series.cummax()
-    dd = (ath - series) / ath
-    return dd, ath
+# `compute_drawdown_from_ath` is re-exported from regime_engine for callers that
+# import it from this module (tests, optimizer/score.py).
 
 
 def compute_rolling_ath_and_dd(series: pd.Series, n_calendar_years: int):
@@ -191,36 +187,6 @@ def build_regime_signal_drawdown(
             pv = s.loc[d] if d in s.index else np.nan
             out.loc[d] = float(pv) if pd.notna(pv) else 0.0
     return out
-
-
-def compute_drawdown_from_historical_ath(series, historical_ath_value=None):
-    """
-    Calculate drawdown using a historical ATH value.
-    If historical_ath_value is provided, use it; otherwise use cummax().
-    
-    Args:
-        series: Price series for the portfolio period
-        historical_ath_value: Optional ATH value from full historical data
-    
-    Returns:
-        Tuple of (drawdown_series, ath_series)
-    """
-    if historical_ath_value is not None:
-        # Use the historical ATH value
-        # ATH series is the max of historical ATH and current series cummax
-        ath = series.cummax().clip(lower=historical_ath_value)
-        # But we want to use the historical ATH as the baseline
-        # So if current price is below historical ATH, use historical ATH
-        ath = pd.Series(index=series.index, data=historical_ath_value)
-        # Update ATH if current series exceeds historical ATH
-        current_max = series.cummax()
-        ath = pd.concat([ath, current_max], axis=1).max(axis=1)
-    else:
-        # Fallback to standard calculation
-        ath = series.cummax()
-    
-    dd = (ath - series) / ath
-    return dd, ath
 
 
 # ------------------------------------------------------------
@@ -507,34 +473,6 @@ def record_daily_row(equity_rows, date, tickers, row_prices, row_norm,
     equity_rows.append(rec)
 
 
-def record_quarterly_row(quarterly_rows, date, tickers, row_prices, shares,
-                         portfolio_value, market_regime, portfolio_regime,
-                         last_rebalance_value, quarter_returns, dd_cols):
-    from utils import log
-    
-    # Handle None shares
-    if shares is None:
-        log(f"⚠️ WARNING: shares is None in record_quarterly_row on {date}. Initializing as empty dict.")
-        shares = {}
-
-    qoq_ret = (portfolio_value / last_rebalance_value) - 1
-    qoq_vol = pd.Series(quarter_returns).std() if len(quarter_returns) else 0
-
-    row = {
-        "Date": date,
-        "Portfolio_Value": portfolio_value,
-        "Market_Regime": market_regime,
-        "Portfolio_Regime": portfolio_regime,
-        "QoQ_Return": qoq_ret,
-        "QoQ_Volatility": qoq_vol,
-        **dd_cols
-    }
-
-    for t in tickers:
-        row[f"{t}_shares"] = float(shares.get(t, 0))
-        row[f"{t}_value"] = float(shares.get(t, 0) * row_prices[t])
-
-    quarterly_rows.append(row)
 
 
 # ------------------------------------------------------------
@@ -587,6 +525,8 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
     # -------------------------
     # Download full historical data for drawdown_ticker from its inception
     log(f"Downloading full historical data for {drawdown_ticker} from inception for pre-portfolio simulation...")
+    # Re-import inside the function so tests can monkeypatch `data_cache.cached_yf_download`
+    # and have the patch take effect on every run (vs. capturing a module-top reference).
     from data_cache import cached_yf_download
 
     # Download from ticker inception (use 1980 as safe early date - yfinance returns from actual inception)
@@ -838,15 +778,21 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         ensure_regime_signal_overrides(_rp)
     validate_panel_sums(config)
 
-    if "SPY" in price_df.columns:
-        spy_panel_sig = price_df["SPY"].astype(float)
+    # Building signal layers (SPY/VIX downloads, MACD/MA computation) is the most
+    # expensive non-loop step in run_backtest. When no regime has an enabled
+    # override panel, the result is unused — skip with a NaN series of matching shape.
+    if any_override_enabled(config):
+        if "SPY" in price_df.columns:
+            spy_panel_sig = price_df["SPY"].astype(float)
+        else:
+            spy_panel_sig = pd.Series(np.nan, index=price_df.index, dtype=float)
+        spy_signal_merged = build_combined_spy_series(price_df.index, spy_panel_sig)
+        vix_signal_merged = build_combined_vix_series(price_df.index, None)
+        signal_total_series = build_signal_total_series(
+            price_df.index, spy_signal_merged, vix_signal_merged
+        )
     else:
-        spy_panel_sig = pd.Series(np.nan, index=price_df.index, dtype=float)
-    spy_signal_merged = build_combined_spy_series(price_df.index, spy_panel_sig)
-    vix_signal_merged = build_combined_vix_series(price_df.index, None)
-    signal_total_series = build_signal_total_series(
-        price_df.index, spy_signal_merged, vix_signal_merged
-    )
+        signal_total_series = pd.Series(np.nan, index=price_df.index, dtype=float)
 
     rebalance_freq = config.get("rebalance_frequency", "monthly")
     rebalance_dates = get_rebalance_dates(price_df.index, rebalance_freq)

@@ -118,6 +118,15 @@ def validate_panel_sums(config: Dict[str, Any], *, atol: float = _PANEL_SUM_TOL)
                 )
 
 
+def any_override_enabled(config: Dict[str, Any]) -> bool:
+    """True if any regime has an enabled upside or protection override panel."""
+    for rp in (config.get("regimes") or {}).values():
+        so = (rp or {}).get("signal_overrides") or {}
+        if so.get("upside", {}).get("enabled") or so.get("protection", {}).get("enabled"):
+            return True
+    return False
+
+
 def _panel_allocation(panel: Dict[str, Any], allocation_tickers: list) -> Dict[str, float]:
     return {t: float(panel.get(t, 0) or 0) for t in allocation_tickers}
 

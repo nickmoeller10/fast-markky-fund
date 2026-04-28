@@ -3,10 +3,9 @@ from utils import log
 import math
 
 def compute_drawdown_from_ath(series):
-    log("Calculating ATH & drawdown series...")
+    """Drawdown vs running all-time high. Returns (dd, ath) — dd in [0, 1]."""
     ath = series.cummax()
     dd = (ath - series) / ath
-    log("ATH & drawdown calculation complete.")
     return dd, ath
 
 

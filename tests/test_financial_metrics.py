@@ -3,7 +3,7 @@ Financial metric correctness: CAGR, volatility, max drawdown, Sharpe, Sortino.
 Each metric verified against: (A) first-principles formula, (B) quantstats reference.
 All functions must return Python float.
 
-Protects: dashboard.calculate_metrics(), utils.max_drawdown_from_equity_curve()
+Protects: metrics.calculate_metrics(), utils.max_drawdown_from_equity_curve()
 """
 import math
 import numpy as np
@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 import quantstats as qs
 
-from dashboard import calculate_metrics
+from metrics import calculate_metrics
 from utils import max_drawdown_from_equity_curve
 
 

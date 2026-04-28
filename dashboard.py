@@ -16,6 +16,7 @@ from datetime import datetime
 import io
 from exporter import export_to_excel
 from utils import max_drawdown_from_equity_curve
+from metrics import calculate_metrics
 from data_loader import VIX_YAHOO_SYMBOL
 from allocation_engine import get_allocation_for_regime
 from signal_override_engine import allocation_human_readable
@@ -124,25 +125,20 @@ def _perf_cell_empty(x) -> bool:
         return False
 
 
-# ======================================================================
-# PAGE CONFIGURATION
-# ======================================================================
-# Note: Page config should be set in the main app (app.py)
-# This is only set if dashboard is run standalone
-try:
-    st.set_page_config(
-        page_title="Fast Markky Fund - Backtest Dashboard",
-        page_icon="📈",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-except:
-    pass  # Page config already set by parent app
+def _set_page_config_if_standalone():
+    """Set Streamlit page config; no-op if a parent app already set it."""
+    try:
+        st.set_page_config(
+            page_title="Fast Markky Fund - Backtest Dashboard",
+            page_icon="📈",
+            layout="wide",
+            initial_sidebar_state="expanded",
+        )
+    except Exception:
+        pass
 
 
-# ======================================================================
-# HELPER FUNCTIONS
-# ======================================================================
+
 REGIME_DESCRIPTIONS = {
     "R1": "Ride High",
     "R2": "Cautious Defense",
@@ -218,110 +214,6 @@ def render_todays_regime_status(equity_df, config):
         st.markdown(f"**{status['recommended_allocation'] or '—'}**")
 
     st.markdown("---")
-
-
-def calculate_metrics(equity_df, config=None):
-    """Calculate key performance metrics"""
-    start_val = equity_df["Value"].iloc[0]
-    end_val = equity_df["Value"].iloc[-1]
-    start_date = pd.to_datetime(equity_df["Date"].iloc[0])
-    end_date = pd.to_datetime(equity_df["Date"].iloc[-1])
-    
-    years = (end_date - start_date).days / 365.25
-    cagr = float((end_val / start_val) ** (1 / years) - 1) if years > 0 else 0.0
-
-    total_return = float((end_val / start_val) - 1)
-
-    # Max drawdown: largest % drop from any prior peak to a trough (full simulation)
-    max_drawdown = float(max_drawdown_from_equity_curve(equity_df["Value"]))
-
-    # Calculate volatility (annualized)
-    returns = equity_df["Value"].pct_change().dropna()
-    vol_raw = returns.std() * np.sqrt(252)
-    volatility = float(vol_raw) if pd.notna(vol_raw) else 0.0
-
-    # Calculate Sharpe ratio (assuming 0% risk-free rate)
-    sharpe = float(cagr / volatility) if volatility > 0 else 0.0
-
-    # Calculate Sortino ratio (downside deviation only)
-    # Downside deviation: square root of mean of squared negative returns
-    # Target return is 0 (no risk-free rate assumption)
-    downside_returns = returns[returns < 0]
-    if len(downside_returns) > 0:
-        # Calculate downside deviation: sqrt(mean(squared negative returns))
-        downside_variance = (downside_returns ** 2).mean()
-        downside_deviation = float(np.sqrt(downside_variance) * np.sqrt(252))
-        sortino = float(cagr / downside_deviation) if downside_deviation > 0 else 0.0
-    else:
-        # No negative returns - Sortino is undefined (infinite or very high)
-        sortino = float('inf') if cagr > 0 else 0.0
-    
-    # Calculate Beta (portfolio sensitivity to market)
-    # Beta = Covariance(portfolio returns, benchmark returns) / Variance(benchmark returns)
-    # Try SPY first, then QQQ, then first available normalized benchmark
-    beta = None
-    beta_benchmark = None
-    
-    # Priority: SPY > QQQ > first available normalized benchmark
-    benchmark_candidates = ["SPY_norm", "QQQ_norm"]
-    if config and "tickers" in config:
-        # Add other tickers as potential benchmarks
-        for ticker in config["tickers"]:
-            if ticker not in ["SPY", "QQQ"]:
-                benchmark_candidates.append(f"{ticker}_norm")
-    
-    # Calculate portfolio returns once
-    portfolio_returns = equity_df["Value"].pct_change().dropna()
-    
-    for bench_col in benchmark_candidates:
-        if bench_col in equity_df.columns:
-            benchmark_values = equity_df[bench_col].dropna()
-            
-            # Calculate benchmark returns
-            benchmark_returns = benchmark_values.pct_change().dropna()
-            
-            # Align returns by index (only use dates where both have data)
-            common_index = portfolio_returns.index.intersection(benchmark_returns.index)
-            
-            if len(common_index) > 30:  # Need at least 30 data points for meaningful beta
-                portfolio_ret_aligned = portfolio_returns.loc[common_index]
-                benchmark_ret_aligned = benchmark_returns.loc[common_index]
-                
-                # Remove any remaining NaN values
-                valid_mask = portfolio_ret_aligned.notna() & benchmark_ret_aligned.notna()
-                portfolio_ret_clean = portfolio_ret_aligned[valid_mask]
-                benchmark_ret_clean = benchmark_ret_aligned[valid_mask]
-                
-                if len(portfolio_ret_clean) > 30:
-                    # Calculate beta: Cov(portfolio, market) / Var(market)
-                    covariance = np.cov(portfolio_ret_clean, benchmark_ret_clean)[0, 1]
-                    benchmark_variance = np.var(benchmark_ret_clean)
-                    
-                    if benchmark_variance > 0:
-                        beta = covariance / benchmark_variance
-                        beta_benchmark = bench_col.replace("_norm", "")
-                        break
-    
-    # If no beta calculated, set to 0
-    if beta is None:
-        beta = 0.0
-        beta_benchmark = "N/A"
-    
-    return {
-        "start_value": start_val,
-        "end_value": end_val,
-        "total_return": total_return,
-        "cagr": cagr,
-        "max_drawdown": max_drawdown,
-        "volatility": volatility,
-        "sharpe_ratio": sharpe,
-        "sortino_ratio": sortino,
-        "beta": beta,
-        "beta_benchmark": beta_benchmark,
-        "years": years,
-        "start_date": start_date,
-        "end_date": end_date
-    }
 
 
 def create_equity_curve_chart(equity_df, config):
@@ -697,7 +589,8 @@ def create_dividend_chart(dividend_df, equity_df):
 # ======================================================================
 def render_dashboard(equity_df, quarterly_df, config, dividend_df=None):
     """Render the complete dashboard"""
-    
+    _set_page_config_if_standalone()
+
     if dividend_df is None:
         dividend_df = pd.DataFrame()
     
