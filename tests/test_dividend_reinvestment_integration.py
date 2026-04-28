@@ -377,3 +377,68 @@ def test_dividend_df_schema(isolate_yf, flat_xlu_panel):
     }
     missing = expected_cols - set(divs.columns)
     assert not missing, f"dividend_df missing expected columns: {missing}"
+
+
+@pytest.mark.integration
+def test_ticker_reinvest_with_nan_target_falls_back_to_cash(
+    isolate_yf, flat_xlu_panel
+):
+    """When dividend_reinvestment_target is a ticker that has NaN price on
+    the dividend day, the dividend must fall back to cash credit — not be
+    silently dropped. Pins the safety fallback added with the dividend
+    ordering comment.
+
+    Setup: target='TQQQ' (a ticker in allocation_tickers), but force TQQQ
+    price to NaN on the dividend day. Without the fallback, the dividend
+    amount would vanish (no shares added, no cash credited). With the
+    fallback, Cash should reflect the dividend amount."""
+    panel = flat_xlu_panel.copy()
+    div_day = panel.index[5]
+    # Force TQQQ price to NaN on the dividend day to simulate pre-IPO /
+    # halted-trading conditions for the reinvest target.
+    panel.loc[div_day, "TQQQ"] = np.nan
+
+    cfg = _div_cfg(target="TQQQ", r1_alloc="XLU")
+    div = _div_df(panel, [(div_day.strftime("%Y-%m-%d"), "XLU", 0.50)])
+
+    eq, _, divs = run_backtest(
+        panel, cfg, compute_drawdown_from_ath, determine_regime,
+        rebalance_portfolio, dividend_data=div,
+    )
+
+    initial_xlu_shares = 10_000.0 / 50.0
+    expected_dividend = initial_xlu_shares * 0.50
+
+    assert len(divs) == 1, f"Expected 1 dividend recorded; got {len(divs)}"
+
+    # The dividend must have landed in Cash (fallback), not silently dropped.
+    day5_cash = float(eq["Cash"].iloc[5])
+    assert day5_cash == pytest.approx(expected_dividend, rel=1e-6), (
+        f"Cash on dividend day should reflect the fallback credit "
+        f"({expected_dividend:.4f}); got {day5_cash:.4f}. "
+        f"This is the 'silently dropped on NaN target' regression shape."
+    )
+
+    # And TQQQ shares must NOT have been incremented (target was unpriced).
+    day5_tqqq_shares = float(eq["TQQQ_shares"].iloc[5])
+    assert day5_tqqq_shares == pytest.approx(0.0, abs=1e-9), (
+        f"TQQQ shares should remain 0 — target was unpriced. Got {day5_tqqq_shares}"
+    )
+
+    # Mark invariant must still hold on this row (NaN-priced TQQQ excluded).
+    panel_aligned = panel.reindex(pd.to_datetime(eq["Date"]))
+    row = eq.iloc[5]
+    manual = 0.0
+    for t in cfg["allocation_tickers"]:
+        col = f"{t}_shares"
+        if col in eq.columns and t in panel_aligned.columns:
+            s = float(row.get(col, 0) or 0)
+            p = panel_aligned.loc[div_day, t]
+            if pd.notna(p):
+                manual += s * float(p)
+    manual += float(row.get("Cash", 0) or 0)
+    v = float(row["Value"])
+    assert abs(v - manual) / max(abs(v), 1.0) <= 5e-6, (
+        f"Mark invariant violated on NaN-target-fallback day: "
+        f"V={v:.4f}, manual={manual:.4f}"
+    )

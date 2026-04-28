@@ -160,7 +160,7 @@ _TICKER_SUFFIX = {
     "TQQQ": "tqqq",
     "QQQ": "qqq",
     "XLU": "xlu",
-    "CASH": "cash",
+    CASH_TICKER: "cash",
 }
 
 

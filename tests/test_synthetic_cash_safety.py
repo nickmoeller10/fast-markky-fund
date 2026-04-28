@@ -56,13 +56,15 @@ def test_cash_series_compounds_to_apy_over_one_year():
 
 @pytest.mark.unit
 def test_cash_series_named_per_request():
+    from data_loader import LEGACY_CASH_TICKER
+
     idx = pd.bdate_range("2020-01-02", periods=10)
-    s_cash = _build_cash_series(idx, name=CASH_TICKER)
+    s_legacy = _build_cash_series(idx, name=LEGACY_CASH_TICKER)
     s_dollar = _build_cash_series(idx, name=DOLLAR_TICKER)
-    assert s_cash.name == "CASH"
+    assert s_legacy.name == "CASH"
     assert s_dollar.name == "$"
     # Same numeric values regardless of label
-    np.testing.assert_array_equal(s_cash.values, s_dollar.values)
+    np.testing.assert_array_equal(s_legacy.values, s_dollar.values)
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +216,72 @@ def test_cash_normalized_is_monotonic_through_run_backtest():
 
 
 # ---------------------------------------------------------------------------
+# worst_case_simulator path — the second leak source
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+def test_worst_case_simulator_does_not_send_cash_to_yfinance():
+    """The worst-case simulator (default app entry point) used to forward
+    every ticker (including CASH/$) to yf.download, returning Pathward equity
+    instead of synthetic MMF. This guard fails the test if any synthetic
+    alias appears in a yfinance call."""
+    import worst_case_simulator
+    from unittest.mock import MagicMock
+
+    real_yf_download = worst_case_simulator.yf.download
+    leaked: list[list[str]] = []
+
+    def tracking_download(tickers, *args, **kwargs):
+        if isinstance(tickers, str):
+            tlist = [tickers]
+        else:
+            tlist = list(tickers)
+        for t in tlist:
+            if t in SYNTHETIC_TICKERS:
+                leaked.append(tlist)
+                raise AssertionError(
+                    f"LEAK: yf.download called with synthetic ticker(s) {tlist}"
+                )
+        return real_yf_download(tickers, *args, **kwargs)
+
+    mock_yf = MagicMock()
+    mock_yf.download = tracking_download
+    with patch.object(worst_case_simulator, "yf", mock_yf):
+        df, earliest_dates = worst_case_simulator.generate_worst_case_prices(
+            config={},
+            requested_tickers=["QQQ", "TQQQ", "XLU", DOLLAR_TICKER],
+            start_date="2010-01-04",
+            end_date="2012-12-31",
+        )
+
+    assert leaked == [], f"Synthetic ticker leaked to yfinance: {leaked}"
+    assert DOLLAR_TICKER in df.columns
+    # The synthetic series MUST be monotonically non-decreasing
+    diffs = df[DOLLAR_TICKER].diff().dropna()
+    assert (diffs >= -1e-12).all(), (
+        f"$ column must be monotonically non-decreasing in worst-case sim "
+        f"(worst diff: {diffs.min():.6e})"
+    )
+    assert earliest_dates.get(DOLLAR_TICKER) == pd.Timestamp("1980-01-01")
+
+
+@pytest.mark.unit
+def test_worst_case_simulator_get_earliest_date_short_circuits_synthetic():
+    """get_earliest_date must return the sentinel pre-1985 date for synthetic
+    tickers without touching yfinance — used by the Streamlit UI's inception
+    panel via app._cached_ticker_earliest_date."""
+    import worst_case_simulator
+
+    with patch.object(worst_case_simulator, "yf") as mock_yf:
+        mock_yf.download.side_effect = AssertionError("yfinance must not be called")
+        ts_cash = worst_case_simulator.get_earliest_date("CASH")
+        ts_dollar = worst_case_simulator.get_earliest_date("$")
+
+    assert ts_cash == pd.Timestamp("1980-01-01")
+    assert ts_dollar == pd.Timestamp("1980-01-01")
+
+
+# ---------------------------------------------------------------------------
 # Registry sanity
 # ---------------------------------------------------------------------------
 
@@ -221,4 +289,5 @@ def test_cash_normalized_is_monotonic_through_run_backtest():
 def test_synthetic_ticker_registry_contains_both_aliases():
     assert CASH_TICKER in SYNTHETIC_TICKERS
     assert DOLLAR_TICKER in SYNTHETIC_TICKERS
-    assert CASH_ALIASES == frozenset({CASH_TICKER, DOLLAR_TICKER})
+    from data_loader import LEGACY_CASH_TICKER
+    assert CASH_ALIASES == frozenset({CASH_TICKER, LEGACY_CASH_TICKER})

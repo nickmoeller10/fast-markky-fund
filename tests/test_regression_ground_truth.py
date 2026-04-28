@@ -20,11 +20,20 @@ from rebalance_engine import rebalance_portfolio
 from utils import max_drawdown_from_equity_curve
 
 
-LOCKED_FINAL_VALUE   = 10949.7909
-LOCKED_CAGR          = 0.018976
-LOCKED_SHARPE        = 0.1552
-LOCKED_MAX_DRAWDOWN  = -0.290396
-LOCKED_VOLATILITY    = 0.122285
+# Updated 2026-04-28: daily-loop compounding bug fix. The pre-fix loop ran the
+# rebalance against yesterday's close NAV instead of today's mark-to-market,
+# silently destroying the day-of-rebalance return. Fixing it (mark-to-market
+# upfront in run_backtest's daily loop) shifts every rebalance day's value to
+# its true close. Net effect on this synthetic 5y panel: CAGR up ~0.93pp,
+# max DD ~3.4pp shallower (the prior numbers under-counted the loss because
+# transition days were "snapped back" to the prior NAV).
+#
+# Numbers below are recomputed against the fixed loop and re-locked.
+LOCKED_FINAL_VALUE   = 11438.7808
+LOCKED_CAGR          = 0.028241
+LOCKED_SHARPE        = 0.2244
+LOCKED_MAX_DRAWDOWN  = -0.256339
+LOCKED_VOLATILITY    = 0.125838
 LOCKED_FIRST_20_REGIMES = ["R1"] * 20
 
 

@@ -70,8 +70,17 @@ if _st_fragment is None:
 
 @st.cache_data(ttl=86_400, show_spinner=False)
 def _cached_ticker_earliest_date(ticker: str) -> Optional[str]:
-    """One row per ticker per day TTL — avoids Yahoo round-trips on every UI tick."""
+    """One row per ticker per day TTL — avoids Yahoo round-trips on every UI tick.
+
+    Synthetic tickers (CASH/$) short-circuit to a sentinel pre-1985 date —
+    they never hit yfinance, where they'd resolve to real-equity tickers
+    (e.g. CASH = Pathward Financial Inc.).
+    """
+    from data_loader import SYNTHETIC_TICKERS
     from worst_case_simulator import get_earliest_date
+
+    if ticker in SYNTHETIC_TICKERS:
+        return "1980-01-01"
 
     ts = get_earliest_date(ticker, start_date="1980-01-01")
     if ts is None:
@@ -309,41 +318,55 @@ def render_configuration_editor():
     
     # Dividend Reinvestment Settings
     with st.expander("💰 Dividend Reinvestment", expanded=False):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            config["dividend_reinvestment"] = st.checkbox(
-                "Enable dividend handling",
-                value=config.get("dividend_reinvestment", True),
-                help="Accrue dividends per target. 'cash' sweeps into the next rebalance with portfolio value.",
+        # Worst-case (simulated) mode synthesizes price tracks from ^IXIC and
+        # has no dividend payments. The backtest entry-point at app.py:808-809
+        # force-disables dividends in that mode, so the UI must reflect that
+        # truth rather than expose a no-op checkbox.
+        worst_case_active = bool(config.get("use_worst_case_simulation", False))
+        if worst_case_active:
+            st.info(
+                "Dividend reinvestment is unavailable while **Simulated scenario** "
+                "is on — the synthetic QQQ/TQQQ price track has no dividend payments. "
+                "Turn off the simulated scenario above to use real Yahoo dividend data."
             )
-        
-        with col2:
-            if config["dividend_reinvestment"]:
-                # Build options: cash + allocation tickers
-                dividend_options = ["cash"] + config.get("allocation_tickers", config["tickers"])
-                current_target = config.get("dividend_reinvestment_target", "cash")
-                
-                # Find index, default to 0 (cash) if not found
-                try:
-                    target_index = dividend_options.index(current_target)
-                except ValueError:
-                    target_index = 0
-                
-                selected_target = st.selectbox(
-                    "Reinvestment Target",
-                    options=dividend_options,
-                    index=target_index,
-                    help="Cash: dividends sit in cash_balance until the next rebalance, then deploy with full notional into regime weights."
+            config["dividend_reinvestment"] = False
+            config.setdefault("dividend_reinvestment_target", "cash")
+        else:
+            col1, col2 = st.columns(2)
+
+            with col1:
+                config["dividend_reinvestment"] = st.checkbox(
+                    "Enable dividend handling",
+                    value=config.get("dividend_reinvestment", True),
+                    help="Accrue dividends per target. 'cash' sweeps into the next rebalance with portfolio value.",
                 )
-                config["dividend_reinvestment_target"] = selected_target
-                
-                if selected_target == "cash":
-                    st.caption("💵 Dividends will be held as cash and redistributed on next rebalance")
+
+            with col2:
+                if config["dividend_reinvestment"]:
+                    # Build options: cash + allocation tickers
+                    dividend_options = ["cash"] + config.get("allocation_tickers", config["tickers"])
+                    current_target = config.get("dividend_reinvestment_target", "cash")
+
+                    # Find index, default to 0 (cash) if not found
+                    try:
+                        target_index = dividend_options.index(current_target)
+                    except ValueError:
+                        target_index = 0
+
+                    selected_target = st.selectbox(
+                        "Reinvestment Target",
+                        options=dividend_options,
+                        index=target_index,
+                        help="Cash: dividends sit in cash_balance until the next rebalance, then deploy with full notional into regime weights."
+                    )
+                    config["dividend_reinvestment_target"] = selected_target
+
+                    if selected_target == "cash":
+                        st.caption("💵 Dividends will be held as cash and redistributed on next rebalance")
+                    else:
+                        st.caption(f"📈 Dividends will be immediately reinvested into {selected_target}")
                 else:
-                    st.caption(f"📈 Dividends will be immediately reinvested into {selected_target}")
-            else:
-                st.caption("Dividend reinvestment is disabled")
+                    st.caption("Dividend reinvestment is disabled")
     
     # Ticker Configuration
     with st.expander("📈 Ticker Configuration", expanded=True):

@@ -10,27 +10,29 @@ Fast Markky Fund implements a regime-based tactical asset allocation strategy th
 
 ### Regime-Based Allocation
 
-The strategy uses three market regimes based on QQQ drawdown from a rolling 1-year all-time high.
+The strategy uses three market regimes based on QQQ drawdown from a rolling 3-year all-time high.
 
-> **Note:** the allocations and thresholds below are the current **defaults**. They are sensible starting values, not tuned production weights, and are subject to change as the strategy is iterated. See `config.py` to override.
+> **Note:** the allocations and thresholds below come from **iter 25** of the iterative config search — the current all-time score champion (0.88) with median CAGR 28.61% and worst max DD −29.80% across 11 Monte Carlo entry points (1999-04 through 2020-07). They are the current best-known baseline, not arbitrary defaults — but iteration continues. See `config.py` to override and `docs/superpowers/methodologies/iterative-config-search.md` for the active hypothesis ladder.
 
-- **R1 — Ride High** (0–6% drawdown): **100% TQQQ**
-  - Aggressive leveraged position during market strength
+- **R1 — Ride High** (0–11.24% drawdown): **81% TQQQ + 7% QQQ + 12% XLU**
+  - TQQQ-heavy leveraged position during calm market — max compounding
   - Signal overrides:
-    - *Max Bull* (signal > +2): hold 100% TQQQ
-    - *Bull Fading* (signal < −2): de-leverage to 100% QQQ
+    - *Strong Bull* (signal ≥ +1): rotate to 8% TQQQ + 47% QQQ + 45% XLU
+    - *Bull Fading* (signal ≤ −2): de-leverage to 19% QQQ + 12% XLU (cash-heavy)
 
-- **R2 — Cautious Defense** (6–20% drawdown): **70% XLU + 30% QQQ**
-  - Mostly defensive but retains some equity exposure
+- **R2 — Passthrough Cash Buffer** (11.24–19.61% drawdown): **89% CASH + 6% QQQ + 5% XLU**
+  - Cash-dominant transition band; `hold/hold` rebalance behavior means the strategy doesn't churn while crossing this band — once entered from above (R1 → R2) it's effectively neutral until R3 fires
   - Signal overrides:
-    - *Recovery Confirmed* (signal > +2): rotate to 70% QQQ + 30% XLU
-    - *Deteriorating Fast* (signal < −3): full defense — 100% XLU
+    - *Recovery Confirmed* (signal ≥ +4): rotate to 30% TQQQ + 27% QQQ + 16% XLU
+    - *Deteriorating* (signal ≤ −3): rotate to 11% QQQ + 48% XLU
 
-- **R3 — Contrarian Buyback** (20%+ drawdown): **50% TQQQ + 50% QQQ**
-  - Aggressive re-entry — deep drawdowns historically precede strong recoveries
+- **R3 — Absolute Defense** (19.61%+ drawdown): **100% CASH**
+  - Deep crisis stops the bleed — the structural breakthrough that prevents XLU's own −39% 2008 drawdown from leaking through
   - Signal overrides:
-    - *Capitulation Reversal* (signal > +3): lean harder — 80% TQQQ + 20% QQQ
-    - *Crisis Deepening* (signal < −4): pull back to 100% XLU
+    - *Capitulation Reversal* (signal ≥ +1): rotate to 40% TQQQ + 30% QQQ + 19% XLU
+    - *Crisis Deepening* (signal ≤ −4): rotate to 24% QQQ + 75% XLU
+
+**CASH** is a synthetic risk-free sleeve (zero drawdown, ~4% APY proxy) — not the yfinance "CASH" ticker (Pathward Financial). Both `"CASH"` and `"$"` are recognized aliases. See `data_loader.SYNTHETIC_TICKERS`.
 
 ### Composite Signal
 
@@ -130,27 +132,52 @@ Edit `config.py` to customize:
 ### Portfolio Parameters
 ```python
 "starting_balance": 10000,
-"start_date": "2010-12-02",
-"end_date": None,  # None = current date
+"start_date": "1999-01-04",
+"end_date": "2026-03-27",
 "drawdown_ticker": "QQQ",
+"drawdown_window_enabled": True,
+"drawdown_window_years": 3,  # rolling 3y peak (iter 25 finding: dominates 1y/2y for DD control)
 ```
 
 ### Rebalancing
 ```python
 "rebalance_frequency": "instant",  # Options: instant, weekly, monthly, quarterly, etc.
+"rebalance_strategy": "per_regime",  # each regime declares hold/match per direction
 ```
 
-### Regimes
+### Regimes (iter 25 champion)
 ```python
 "regimes": {
     "R1": {
         "dd_low": 0.00,
-        "dd_high": 0.06,
-        "TQQQ": 1.00,
-        "QQQ": 0.00,
-        "XLU": 0.00,
+        "dd_high": 0.1124,
+        "TQQQ": 0.8112,
+        "QQQ": 0.0657,
+        "XLU": 0.1231,
+        "CASH": 0.0,
+        "rebalance_on_downward": "match",
+        "rebalance_on_upward": "match",
     },
-    # ... more regimes
+    "R2": {
+        "dd_low": 0.1124,
+        "dd_high": 0.1961,
+        "TQQQ": 0.0,
+        "QQQ": 0.0645,
+        "XLU": 0.0462,
+        "CASH": 0.8894,
+        "rebalance_on_downward": "hold",  # passthrough — don't churn entering R2
+        "rebalance_on_upward": "hold",
+    },
+    "R3": {
+        "dd_low": 0.1961,
+        "dd_high": 1.00,
+        "TQQQ": 0.0,
+        "QQQ": 0.0,
+        "XLU": 0.0,
+        "CASH": 1.0,
+        "rebalance_on_downward": "match",
+        "rebalance_on_upward": "hold",
+    },
 }
 ```
 
@@ -239,11 +266,12 @@ streamlit run dashboard_runner.py
 - **Sharpe Ratio**: Risk-adjusted return (higher is better)
 - **Volatility**: Annualized standard deviation of returns
 
-### Regime Behavior
+### Regime Behavior (iter 25 champion)
 
-- **R1 → R2**: Immediate defensive switch (protect capital)
-- **R2 → R3**: Aggressive re-entry (buy the dip)
-- **R3 → R1**: Only after full recovery (avoid false signals)
+- **R1 → R2** (downward): R2 is `hold` on downward — portfolio stays in R1 weights as drawdown crosses 11.24%. Avoids churning the cash-buffer transition band.
+- **R2 → R3** (downward): R3 is `match` on downward — strategy snaps to 100% CASH. Stops the bleed before crisis deepens.
+- **R3 → R2** (upward): R2 is `hold` on upward — portfolio stays in CASH through the partial recovery, doesn't re-risk too early.
+- **R2 → R1** (upward): R1 is `match` on upward — full re-entry into TQQQ-heavy weights once a full recovery is confirmed.
 
 ## 🤝 Contributing
 

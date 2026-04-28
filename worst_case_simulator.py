@@ -19,6 +19,17 @@ import numpy as np
 import yfinance as yf
 from datetime import datetime
 from utils import log
+from data_loader import (
+    SYNTHETIC_TICKERS,
+    _attach_synthetic_columns,
+    _split_real_and_synthetic,
+)
+
+
+# Sentinel "always available" date for synthetic tickers — used so the
+# simulator never sends "$"/"CASH" through yfinance. Older than ^IXIC's
+# 1985-02-01 inception, so synthetic tickers don't gate the start date.
+_SYNTHETIC_EARLIEST = pd.Timestamp("1980-01-01")
 
 
 # =====================================================================
@@ -33,7 +44,13 @@ def clamp_return(r, min_r=-0.99, max_r=3.00):
 # Helper → Get earliest available date for a ticker
 # =====================================================================
 def get_earliest_date(ticker, start_date="1980-01-01"):
-    """Get the earliest available date for a ticker"""
+    """Get the earliest available date for a ticker.
+
+    Synthetic tickers (CASH/$) never hit yfinance — they return a sentinel
+    pre-1985 date so they never gate the simulation start.
+    """
+    if ticker in SYNTHETIC_TICKERS:
+        return _SYNTHETIC_EARLIEST
     try:
         data = yf.download(ticker, start=start_date, progress=False, auto_adjust=True)
         if not data.empty and "Close" in data.columns:
@@ -72,10 +89,11 @@ def generate_worst_case_prices(config, requested_tickers, start_date=None, end_d
     # ------------------------------------------------------------
     log("[SIMULATOR] Determining earliest available dates for tickers...")
     earliest_dates = {}
-    
-    # QQQ and TQQQ are simulated from 1985, so exclude them from earliest date check
+
+    # QQQ and TQQQ are simulated from 1985, so exclude them from earliest date check.
+    # Synthetic tickers (CASH/$) never gate start date — get_earliest_date short-circuits.
     other_tickers = [t for t in requested_tickers if t not in ["QQQ", "TQQQ"]]
-    
+
     for ticker in other_tickers:
         earliest_date = get_earliest_date(ticker, start_date="1980-01-01")
         if earliest_date:
@@ -155,7 +173,13 @@ def generate_worst_case_prices(config, requested_tickers, start_date=None, end_d
     # 2. Load real ETF data to get inception dates and correlation
     # ------------------------------------------------------------
     log("[SIMULATOR] Loading real ETF data for correlation and inception dates...")
-    real_tickers = list(set(["QQQ", "TQQQ"] + [t for t in requested_tickers if t not in ["QQQ", "TQQQ"]]))
+    # Filter synthetic tickers (CASH/$) BEFORE the yfinance call — sending
+    # them to yf.download returns the real "CASH" ticker (Pathward Financial
+    # Inc.) instead of the synthetic MMF series.
+    real_tickers = list(set(
+        ["QQQ", "TQQQ"]
+        + [t for t in requested_tickers if t not in ["QQQ", "TQQQ"] and t not in SYNTHETIC_TICKERS]
+    ))
     
     # Download real data - handle single vs multiple tickers
     if len(real_tickers) == 1:
@@ -346,34 +370,47 @@ def generate_worst_case_prices(config, requested_tickers, start_date=None, end_d
     price_df["QQQ"] = final_qqq
     price_df["TQQQ"] = final_tqqq
     
-    # Add other tickers (use real data only, no simulation)
+    # Add other tickers (use real data only, no simulation).
+    # Synthetic tickers (CASH/$) are appended in a single _attach_synthetic_columns
+    # pass after this loop — never sent to yfinance.
+    synthetic_requested = [t for t in requested_tickers if t in SYNTHETIC_TICKERS]
     for ticker in requested_tickers:
-        if ticker not in ["QQQ", "TQQQ"]:
-            if ticker in real_close.columns:
-                real_series = real_close[ticker].dropna()
-                if len(real_series) > 0:
-                    # Align to full index, forward fill from first available date
-                    aligned_series = real_series.reindex(full_index, method='ffill')
-                    price_df[ticker] = aligned_series
-                    log(f"[SIMULATOR] {ticker}: Using real data from {real_series.index.min().date()}")
-                else:
-                    log(f"[SIMULATOR] Warning: {ticker} has no data, skipping")
+        if ticker in ["QQQ", "TQQQ"]:
+            continue
+        if ticker in SYNTHETIC_TICKERS:
+            continue
+        if ticker in real_close.columns:
+            real_series = real_close[ticker].dropna()
+            if len(real_series) > 0:
+                # Align to full index, forward fill from first available date
+                aligned_series = real_series.reindex(full_index, method='ffill')
+                price_df[ticker] = aligned_series
+                log(f"[SIMULATOR] {ticker}: Using real data from {real_series.index.min().date()}")
             else:
-                # Try downloading this ticker separately
-                try:
-                    ticker_data = yf.download(ticker, start="1990-01-01", auto_adjust=True, progress=False)
-                    if not ticker_data.empty and "Close" in ticker_data.columns:
-                        real_series = ticker_data["Close"].dropna()
-                        if len(real_series) > 0:
-                            aligned_series = real_series.reindex(full_index, method='ffill')
-                            price_df[ticker] = aligned_series
-                            log(f"[SIMULATOR] {ticker}: Downloaded and using real data from {real_series.index.min().date()}")
-                        else:
-                            log(f"[SIMULATOR] Warning: {ticker} has no data after download, skipping")
+                log(f"[SIMULATOR] Warning: {ticker} has no data, skipping")
+        else:
+            # Try downloading this ticker separately
+            try:
+                ticker_data = yf.download(ticker, start="1990-01-01", auto_adjust=True, progress=False)
+                if not ticker_data.empty and "Close" in ticker_data.columns:
+                    real_series = ticker_data["Close"].dropna()
+                    if len(real_series) > 0:
+                        aligned_series = real_series.reindex(full_index, method='ffill')
+                        price_df[ticker] = aligned_series
+                        log(f"[SIMULATOR] {ticker}: Downloaded and using real data from {real_series.index.min().date()}")
                     else:
-                        log(f"[SIMULATOR] Warning: {ticker} not found in real data, skipping")
-                except Exception as e:
-                    log(f"[SIMULATOR] Warning: Could not download {ticker}: {e}, skipping")
+                        log(f"[SIMULATOR] Warning: {ticker} has no data after download, skipping")
+                else:
+                    log(f"[SIMULATOR] Warning: {ticker} not found in real data, skipping")
+            except Exception as e:
+                log(f"[SIMULATOR] Warning: Could not download {ticker}: {e}, skipping")
+
+    # Attach synthetic ticker columns (CASH/$) — generated locally, never fetched.
+    if synthetic_requested:
+        price_df = _attach_synthetic_columns(price_df, synthetic_requested)
+        for ticker in synthetic_requested:
+            earliest_dates[ticker] = _SYNTHETIC_EARLIEST
+            log(f"[SIMULATOR] {ticker}: Synthetic series attached (zero drawdown, daily-compounded MMF)")
     
     # Add QQQ and TQQQ to earliest_dates (they're simulated from 1985)
     if "QQQ" in requested_tickers:

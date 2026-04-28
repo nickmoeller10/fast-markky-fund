@@ -2,7 +2,7 @@
 
 > **Read this first.** Quick context map so you (Claude or any new contributor) can answer questions and make design decisions without re-analyzing the whole codebase. Keep this file pruned and accurate — if it stops being trustworthy, it stops being useful.
 >
-> Last updated: 2026-04-26 (test suite work) → 2026-04-27 (config optimizer + CASH support).
+> Last updated: 2026-04-26 (test suite work) → 2026-04-27 (config optimizer + CASH support; override-panel sum invariant; CASH leak fix; renamed CASH → `$` in production) → 2026-04-28 (sticky signal overrides; daily-loop compounding bug fix; clean baseline config replaces iter-25 reconstruction; new `tests/test_compounding_correctness.py` + methodology doc; production-config locked regression + signal override integration + dividend reinvestment integration close open issues #2/#7/#9).
 
 ---
 
@@ -15,7 +15,9 @@ There is a **long-running iterative optimization** in progress. To resume from a
 3. List **`optimizer_runs/constraints/iter*_constraints.json`** for the active hypothesis JSON.
 4. Run **`python3 scripts/show_best.py --study iter<N>`** for the latest champion's full allocation.
 
-**Current champion (iter 25):** 3-regime, 3-yr window, CAGR 28.6%, max-DD −29.8%, score 0.88. R3 base = 100% CASH (absolute defense). Goal is CAGR ≥ 30% AND DD ≥ −35%; gap is ~1.4 pts on CAGR.
+**iter 25 result (now superseded — see bug callout below):** 3-regime, 3-yr window, CAGR 28.6%, max-DD −29.8%, score 0.88. R3 base = 100% `$` (absolute defense). Goal is CAGR ≥ 30% AND DD ≥ −35%; gap is ~1.4 pts on CAGR.
+
+**🐛 iter 25 panel-shape bug (fixed 2026-04-27):** iter 25's score reflected a 3-coord (TQQQ/QQQ/XLU) override-panel search even though the optimizer was sampling 4-coord simplexes (with cash). Root cause: `ensure_regime_signal_overrides` only iterated default keys, dropping cash from override panels at config-paste time; `get_target_allocation_for_override` then silently renormalized the 31–99% panels to 1.0. Fix: `signal_override_engine.validate_panel_sums` raises if any enabled panel doesn't sum to 1.0 within 1e-3, `ensure_regime_signal_overrides` preserves extra ticker keys, and the production config was rebuilt from iter-25 raw weights with the full 4-coord shape. iter 26 re-runs iter 25's exact constraints with the bug-fixed pipeline.
 
 **Working agreement:** the user wants iterations to continue past the goal, not stop at it. Each iteration: hypothesis → constraints → run → analyze → present full allocations → log → design next.
 
@@ -30,20 +32,24 @@ QQQ drawdown from rolling 1y peak ──→ Market regime ──→ (asymmetric 
                                        (R1/R2/R3)         per_regime hold/match    target weights      shares
 ```
 
-**Three regimes** (current defaults — subject to change):
-- **R1 — Ride High** (0–6% dd): 100% TQQQ
-- **R2 — Cautious Defense** (6–20% dd): 70% XLU + 30% QQQ
-- **R3 — Contrarian Buyback** (20%+ dd): 50% TQQQ + 50% QQQ
+**Three regimes** (current defaults — clean baseline set 2026-04-28; replaces the iter-25 reconstruction):
+- **R1 — Ride High** (0–12% dd): 75% TQQQ + 25% XLU
+- **R2 — XLU Defensive** (12–19% dd): 100% XLU
+- **R3 — Absolute Defense** (19%+ dd): **100% `$`** (synthetic risk-free MMF — zero drawdown)
 
-These are sensible defaults, not tuned production weights. Treat them as a starting point.
+R1 has signal overrides enabled: Strong Bull (signal > +3) holds the same 75/0/25/0 (no-op trigger that just exercises the override path), and Bull Fading (signal < -2) routes to a defensive 25/0/75/0. R2/R3 override panels are present but disabled. Drawdown window is 1y rolling.
 
-**Signal overrides** sit on top: VIX z-score (L1) + MACD (L2) + MA50/200 (L3) produce a composite signal total in `[−6, +6]`. Each regime declares an upside override (when signal > threshold) and a protection override (when signal < threshold). All 6 overrides enabled in defaults:
+This baseline replaces the iter-25 raw-weight reconstruction. Every prior iteration score (iter 1–26) was earned under at least one of two now-fixed bugs (cash dropped from override panels at config-paste time; rebalance using yesterday's NAV instead of today's mark). All scores are stale until iter 27+ re-baselines under the corrected pipeline. See `docs/superpowers/methodologies/iterative-config-search.md`.
 
-| Regime | Upside (signal >) | Protection (signal <) |
+**Signal overrides** sit on top: VIX z-score (L1) + MACD (L2) + MA50/200 (L3) produce a composite signal total in `[−6, +6]`. Each regime declares an upside override (when signal > threshold) and a protection override (when signal < threshold). Every panel sums to 1.0; `signal_override_engine.validate_panel_sums` enforces this at backtest start.
+
+| Regime | Upside | Protection |
 |---|---|---|
-| R1 | +2 → 100% TQQQ ("Max Bull") | −2 → 100% QQQ ("Bull Fading") |
-| R2 | +2 → 70% QQQ + 30% XLU ("Recovery Confirmed") | −3 → 100% XLU ("Deteriorating Fast") |
-| R3 | +3 → 80% TQQQ + 20% QQQ ("Capitulation Reversal") | −4 → 100% XLU ("Crisis Deepening") |
+| R1 | >+1: TQQQ 8% + QQQ 47% + XLU 45% ("Strong Bull") | <−2: QQQ 19% + XLU 12% + `$` 69% ("Bull Fading") |
+| R2 | >+4: TQQQ 30% + QQQ 27% + XLU 16% + `$` 27% ("Recovery") | <−3: QQQ 11% + XLU 48% + `$` 41% ("Deteriorating") |
+| R3 | >+1: TQQQ 40% + QQQ 30% + XLU 19% + `$` 11% ("Capitulation Reversal") | <−4: QQQ 24% + XLU 75% + `$` <1% ("Crisis Deepening") |
+
+**`$`** is a synthetic risk-free sleeve (zero drawdown, 4% APY proxy) — not the yfinance "CASH" ticker (Pathward Financial Inc., a real bank stock). Both `"$"` and `"CASH"` are recognized aliases. See `data_loader.SYNTHETIC_TICKERS`. Production config now uses `"$"` to make this visually unmistakable; legacy code paths still accept `"CASH"`.
 
 ---
 
@@ -196,7 +202,7 @@ Returned by `run_backtest`. **Note:** signal-layer columns (Signal_L1, MACD_*, e
 | `exporter.py` | Excel export for backtest results. |
 | `worst_case_simulator.py` | Synthetic worst-case data scenarios (separate concern from main backtest). |
 
-### Tests (153 passing, all under `tests/`)
+### Tests (222 passing, 1 skipped, all under `tests/`)
 
 | File | Count | Covers |
 |---|---|---|
@@ -213,6 +219,10 @@ Returned by `run_backtest`. **Note:** signal-layer columns (Signal_L1, MACD_*, e
 | `test_signal_override_engine.py` | (existing) | Override decision unit tests (not integration) |
 | `test_tradable_allocation_and_backtest.py` | (existing) | Pre-IPO TQQQ proxy paths |
 | `test_cash_allocation.py` | 7 | CASH series compounding + end-to-end backtest + `enable_cash_in_regimes` + `forced_base_allocations` |
+| `test_compounding_correctness.py` | 24 | Daily-loop compounding invariants: paired-config equivalence, mark invariant, closed-form pure-asset, R1-width DD monotonicity, real-cached-data buy-and-hold parity. See `docs/superpowers/methodologies/compounding-test-patterns.md`. |
+| `test_production_locked_regression.py` | 8 (+1 bootstrap-only) | **Production-path locked anchor** — uses real cached yfinance data + full production config (`per_regime` + overrides + rolling DD window + `$` sleeve, 1999-2026). Locks final value / CAGR / max DD / Sharpe / vol / row count. Mark invariant + daily-return-product invariant on the production path. Bootstrap helper gated by `--bootstrap` pytest flag. |
+| `test_signal_override_integration.py` | 6 | End-to-end signal override behavior through `run_backtest`: fire-on-threshold, sticky-into-neutral (locks 2026-04-28 fix), upside↔protection flip, regime-change clears override, day-1 init, `validate_panel_sums` raises at backtest start. Monkeypatches `backtest.build_signal_total_series` for deterministic Signal_total. |
+| `test_dividend_reinvestment_integration.py` | 6 | End-to-end dividend reinvestment: cash mode closed-form, ticker reinvest mode, mark invariant under multiple events, dividend-on-rebalance-day ordering pin (same shape as the 2026-04-28 mark-to-market bug), empty-events ≡ disabled, `dividend_df` schema lock. |
 
 ### Other
 
@@ -344,51 +354,54 @@ NaN policy: `determine_regime(NaN)` → None; `max_drawdown_from_equity_curve` d
 start_date:                "1999-01-04"
 end_date:                  "2026-03-27"
 starting_balance:          10_000
-tickers:                   ["QQQ", "TQQQ", "XLU", "SPY"]
-allocation_tickers:        ["QQQ", "TQQQ", "XLU"]
+tickers:                   ["QQQ", "TQQQ", "XLU", "SPY", "$"]
+allocation_tickers:        ["TQQQ", "QQQ", "XLU", "$"]
 drawdown_ticker:           "QQQ"
 rebalance_strategy:        "per_regime"     # NOT down_only — locked test uses down_only!
 rebalance_frequency:       "instant"
 drawdown_window_enabled:   True
-drawdown_window_years:     1
+drawdown_window_years:     3
 dividend_reinvestment:     False
 ```
 
-**Allocation universe:** the production config holds three risk sleeves
-(TQQQ / QQQ / XLU). The optimizer can additionally include a synthetic
-**CASH** ticker as a 4th allocation option — see `optimizer/parameter_space.py`
-(`CASH_TICKER`, `CASH_APY`). CASH is a daily-compounded risk-free series
-(default 4% APY) generated in `optimizer/score._build_cash_series`; it is
-opt-in via `IterationConstraints.enable_cash_in_regimes` (search) or
-`forced_base_allocations` (pin). CASH never appears in the base production
-config — it only enters when the optimizer explicitly asks for it.
+**Allocation universe:** four sleeves — TQQQ, QQQ, XLU, and the synthetic `$`
+risk-free MMF (zero drawdown, ~4% APY). `$` is generated locally in
+`data_loader._build_cash_series` and is **never** sent to yfinance; the
+optimizer can pin or search it via `IterationConstraints.enable_cash_in_regimes`
+or `forced_base_allocations`. `data_loader.CASH_ALIASES = frozenset({"$", "CASH"})`
+recognises both labels (production uses `"$"` to disambiguate from Pathward
+Financial Inc., the real-equity yfinance ticker for "CASH").
 
-Regime thresholds (all match/match for clean follow logic):
-- **R1**: dd ∈ [0.00, 0.06) — 100% TQQQ
-- **R2**: dd ∈ [0.06, 0.20) — 70% XLU + 30% QQQ
-- **R3**: dd ∈ [0.20, 1.00] — 50% TQQQ + 50% QQQ
+Regime thresholds (iter 25 raw-weight reconstruction; rebalance flags per panel):
+- **R1**: dd ∈ [0.00, 0.1124) — 81% TQQQ + 7% QQQ + 12% XLU. Rebalance match/match.
+- **R2**: dd ∈ [0.1124, 0.1961) — 89% `$` + 6% QQQ + 5% XLU. Rebalance hold/hold (passthrough).
+- **R3**: dd ∈ [0.1961, 1.00] — 100% `$`. Rebalance match (down) / hold (up).
 
-All 6 signal overrides enabled (see Architecture section for the full table). These are defaults, not tuned values — expect to iterate.
+All 6 signal overrides enabled and each sums to 1.0 (validated at backtest start). See the Architecture section table for the full weights.
 
 ---
 
 ## Bugs fixed during test suite work
 
+- **2026-04-28** — `backtest.run_backtest` daily loop computed rebalance share counts from yesterday's close NAV instead of today's mark-to-market. The day-of-rebalance return was silently destroyed: `sum(new_shares × today_prices) == yesterday_close_NAV`, so today's intraday move never landed in the equity curve. Symptoms: identical-weight rebalances changed the equity curve; max-DD was the same across structurally-different R1 widths because crash-day rebalances "snapped back" to the prior NAV; signal-override panels with weights matching the regime base produced different equity than override-disabled. Fixed by marking `portfolio_value` to today's prices at the top of the daily loop (after the skip-day check, before dividend / regime / override blocks). Caught and locked by `tests/test_compounding_correctness.py` (24 tests across paired-equivalence, mark-invariant, closed-form, monotonicity, and real-data patterns). Locked regression values in `tests/test_regression_ground_truth.py` updated: CAGR 1.90% → 2.82%, max DD −29.04% → −25.63%. Methodology doc: `docs/superpowers/methodologies/compounding-test-patterns.md`.
+- **2026-04-28** — `signal_override_engine.desired_signal_override_mode` was a stateless level evaluator that returned `"none"` whenever the signal drifted into the neutral band, unwinding any active override. Per the design intent, an override should be sticky once entered: it persists until either a regime change clears it (handled by the caller) or a different override fires. Fixed by honoring `current_mode` in the "neither panel active" branch.
 - **2026-04-26** — `dashboard.calculate_metrics` returned `numpy.float64` (and `int 0` for zero-vol/zero-years edge cases) instead of consistent Python `float`. Fixed in commit `1818ea7` by coercing all metric returns to `float()`. Caught by type-contract tests in `tests/test_financial_metrics.py`.
+- **2026-04-27** — `signal_override_engine.ensure_regime_signal_overrides` silently dropped extra ticker keys (e.g. `CASH`/`$`) from override panels because it only iterated `default_signal_override_panel()` keys. Combined with `get_target_allocation_for_override`'s implicit-renormalize fallback, this meant iter 25's optimizer searched a 4-coord (TQQQ/QQQ/XLU/CASH) override simplex but only the 3-coord projection ever executed. Fixed: `ensure_regime_signal_overrides` now preserves any ticker-like keys present in panel dicts; `validate_panel_sums(config)` raises if any enabled panel doesn't sum to 1.0 within `1e-3`; the implicit renormalize was replaced with the same hard check. Production config rebuilt from iter-25 raw weights with the full 4-coord shape (the cash dimension on R1/R2/R3 override panels now reaches execution).
+- **2026-04-27** — `worst_case_simulator.generate_worst_case_prices` (the default Streamlit entry path when `use_worst_case_simulation=True`) sent every requested ticker — including `CASH`/`$` — straight to `yf.download`, returning Pathward Financial Inc. equity for the `CASH` column. Same leak in `app._cached_ticker_earliest_date` via `worst_case_simulator.get_earliest_date`. Fixed: filter `data_loader.SYNTHETIC_TICKERS` at every yfinance call site; attach synthetic columns via `data_loader._attach_synthetic_columns` after the real-data load. New tests in `tests/test_synthetic_cash_safety.py` lock the no-leak contract for the worst-case path.
 
 ---
 
 ## Open issues / tech debt (severity high → low)
 
 1. ~~**Non-reproducible backtests.**~~ Resolved by `data_cache.py`. Run with `FMF_DATA_MODE=frozen` for guaranteed reproducibility against the committed snapshot.
-2. **Locked regression doesn't cover production code path.** `test_regression_ground_truth.py` uses `down_only` + no overrides + no drawdown window. Production uses `per_regime` + 6 overrides + drawdown window + 25y of real history. Will be addressed by Phase 2E of the optimizer plan.
+2. ~~**Locked regression doesn't cover production code path.**~~ Resolved 2026-04-28 by `tests/test_production_locked_regression.py` (8 locked tests + invariants on real cached data over 1999-2026 production config). The legacy `tests/test_regression_ground_truth.py` (down_only, 5y synthetic) is retained as a faster sanity anchor.
 3. **Duplicate `compute_drawdown_from_ath`** — `regime_engine.py:5` AND `backtest.py:107`. Will silently drift if either changes.
 4. **`dashboard.py` imports streamlit at module level** — forces metric-only tests to install streamlit/plotly. `calculate_metrics` should live in a `metrics.py` with no UI deps.
 5. **`run_backtest` has hidden network calls** — yfinance + `signal_layers.load_spy_series` + `signal_layers.load_vix_series`. Tests must patch 3 functions to mock.
 6. **Signal layer computation runs even when all overrides disabled.** Wasted CPU; forces test mocks. Easy guard: skip the block when no regime has an enabled override.
-7. **No end-to-end test of signal overrides enabled.** `test_signal_override_engine.py` covers unit logic only.
+7. ~~**No end-to-end test of signal overrides enabled.**~~ Resolved 2026-04-28 by `tests/test_signal_override_integration.py` (6 integration tests covering fire / sticky / flip / regime-clear / day-1-init / panel-sum-raise through `run_backtest`).
 8. **Pre-portfolio simulation untested.** `backtest.py:660-720` walks regime through ~25y of pre-history but no test verifies the output.
-9. **No end-to-end test of dividend reinvestment.** Disabled in production but code path untested.
+9. ~~**No end-to-end test of dividend reinvestment.**~~ Resolved 2026-04-28 by `tests/test_dividend_reinvestment_integration.py` (6 integration tests including a dividend-on-rebalance-day ordering pin that catches the same class of bug as the 2026-04-28 mark-to-market fix).
 10. **`test_rolling_drawdown_window.py` and `test_drawdown_window.py` overlap.** Consider merging.
 
 ---

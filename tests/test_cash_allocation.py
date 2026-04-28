@@ -89,7 +89,7 @@ def test_run_backtest_handles_cash_in_allocation(price_fixture):
         "regimes": {
             "R1": {
                 "dd_low": 0.0, "dd_high": 0.08,
-                "TQQQ": 0.0, "QQQ": 0.0, "XLU": 0.0, "CASH": 1.0,
+                "TQQQ": 0.0, "QQQ": 0.0, "XLU": 0.0, CASH_TICKER: 1.0,
                 "rebalance_on_downward": "match", "rebalance_on_upward": "match",
                 "signal_overrides": {
                     "upside": {"enabled": False},
@@ -98,7 +98,7 @@ def test_run_backtest_handles_cash_in_allocation(price_fixture):
             },
             "R2": {
                 "dd_low": 0.08, "dd_high": 0.28,
-                "TQQQ": 0.0, "QQQ": 0.0, "XLU": 0.0, "CASH": 1.0,
+                "TQQQ": 0.0, "QQQ": 0.0, "XLU": 0.0, CASH_TICKER: 1.0,
                 "rebalance_on_downward": "match", "rebalance_on_upward": "match",
                 "signal_overrides": {
                     "upside": {"enabled": False},
@@ -107,7 +107,7 @@ def test_run_backtest_handles_cash_in_allocation(price_fixture):
             },
             "R3": {
                 "dd_low": 0.28, "dd_high": 1.0,
-                "TQQQ": 0.0, "QQQ": 0.0, "XLU": 0.0, "CASH": 1.0,
+                "TQQQ": 0.0, "QQQ": 0.0, "XLU": 0.0, CASH_TICKER: 1.0,
                 "rebalance_on_downward": "match", "rebalance_on_upward": "match",
                 "signal_overrides": {
                     "upside": {"enabled": False},
@@ -175,7 +175,7 @@ def test_enable_cash_in_regimes_adds_cash_simplex_param():
     if "R2" in config["regimes"]:
         r2 = config["regimes"]["R2"]
         assert CASH_TICKER in r2
-        s = sum(float(r2.get(t, 0.0)) for t in ("TQQQ", "QQQ", "XLU", "CASH"))
+        s = sum(float(r2.get(t, 0.0)) for t in ("TQQQ", "QQQ", "XLU", CASH_TICKER))
         assert s == pytest.approx(1.0, abs=1e-6)
 
 

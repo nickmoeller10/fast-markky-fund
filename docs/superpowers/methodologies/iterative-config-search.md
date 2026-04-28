@@ -300,17 +300,19 @@ Each is a rule-of-thumb earned through ≥1 iteration. Cite the supporting iter 
 | 21 | 2 | 3y | 16.85% | **35.2%** | −40.2% | 2.44 | 0.62 | first to beat 30% CAGR |
 | 23 | 2 | 3y | 14.75% | 32.0% | −40.2% | 2.80 | 0.51 | beat 30% with cash protection |
 | 24 | 2 | 3y | 10.05% | **36.9%** | −42.0% | 7.16 | 0.06 | top CAGR (whipsaw cost) |
-| **25** | **3** | **3y** | **11.24%** | **28.6%** | **−29.8%** | **0.77** | **0.88 🏆** | **CURRENT CHAMPION (best score)** |
+| 25 | 3 | 3y | 11.24% | 28.6% | −29.8% | 0.77 | 0.88 (pre-bugfix) | **superseded — see callout below** |
 
-**Current champion (iter 25 trial 24):**
+**🐛 Bug invalidating iter 25 as a baseline (discovered 2026-04-27):** iter 25 was scored against override panels that had silently lost their CASH dimension. The optimizer sampled `R*_protection_w_cash_raw` / `R*_upside_w_cash_raw` but those weights were dropped at config-paste time and renormalized away at runtime, so the score reflects a 3-coord (TQQQ/QQQ/XLU) override search, not the 4-coord space the optimizer thought it was exploring. The structure (R3 = 100% CASH, R2 cash-passthrough, R1 ultra TQQQ + cash protection at signal=−2) is still likely the right shape, but the specific override weights inside that shape are not optimal. **Iter 26 re-runs iter 25's exact constraints with the bug-fixed pipeline** to establish a comparable baseline.
+
+**Pre-bugfix iter 25 trial 24 reference (for historical context):**
 - 3-regime, 3-yr window
 - R1 (0–11.24%): 81% TQQQ + 7% QQQ + 12% XLU
 - R2 (11.24–19.61%): 89% CASH + 6% QQQ + 5% XLU (passthrough)
-- R3 (19.61%+): **100% CASH** (forced)
-- Median CAGR 28.6%, worst-DD −29.8%, rebs/y 0.77, score 0.88
-- p95 CAGR 40.15%, best entry 45.4%
+- R3 (19.61%+): 100% CASH (forced)
+- Score 0.88, median CAGR 28.6%, worst-DD −29.8%, rebs/y 0.77
+- ⚠️ Override panels missing CASH; runtime renormalized to TQQQ/QQQ/XLU only
 
-**Gap to user's joint target:** ~1.4 pts on CAGR (28.6 vs 30). DD is 5.2 pts inside target.
+**Gap to user's joint target:** ~1.4 pts on CAGR (28.6 vs 30). DD is 5.2 pts inside target. Will be re-evaluated against iter 26's result.
 
 ---
 
@@ -344,12 +346,13 @@ Key modules to inspect when something feels off:
 
 ## Pitfalls and gotchas
 
-1. **CASH is a real yfinance ticker** (Pathward Financial Inc., a bank stock). Synthetic injection MUST happen via `data_loader.load_price_data` which filters `SYNTHETIC_TICKERS = {"CASH", "$"}` before the yfinance call. Tests in `tests/test_synthetic_cash_safety.py` lock this contract. Symptom: "normalized CASH is going down" → real Pathward data leaked through.
+1. **CASH is a real yfinance ticker** (Pathward Financial Inc., a bank stock). Synthetic injection MUST happen via `data_loader.load_price_data` which filters `SYNTHETIC_TICKERS = {"CASH", "$"}` before the yfinance call. Tests in `tests/test_synthetic_cash_safety.py` lock this contract for `load_price_data` AND for `worst_case_simulator.generate_worst_case_prices`. Symptom: "normalized CASH is going down" → real Pathward data leaked through. Production config now uses `$` to make this visually unmistakable.
 2. **Pickle / numpy version mismatch.** System Python and `.venv` must both be on numpy<2 or pickle deserialization fails with `numpy._core` errors. Memory entry exists for this.
 3. **Optuna `n_trials=N` with `load_if_exists=True` runs N MORE trials**, doesn't subtract existing. Re-running iter25 with `--trials 50` doesn't get you back to 50 — it adds 50 more.
 4. **Streamlit runs in `auto` mode by default**, can write fresh cache files. Optimizer always uses `frozen` mode to ensure reproducibility.
 5. **Cache key includes the full ticker list.** Adding/removing tickers from `config["tickers"]` changes the cache key → may need refresh. The optimizer pre-loads the full panel via `ALL_PANEL_TICKERS` to keep one cache entry.
 6. **Simplex normalization can defeat raw-weight floors.** Always cap the OTHER raw weights when you want a specific normalized dominance.
+7. **Never hand-paste champion configs from `config_json` directly.** The iter-25-era config_json carried CASH only on base allocations; override panels were 3-coord. When pasted into `config.py`, the override panels summed to 0.31–0.99, the runtime silently renormalized them, and `R*_protection_w_cash_raw` / `R*_upside_w_cash_raw` had zero effect on execution despite being sampled by Optuna. **Always reconstruct from `trial.params` raw weights** (each `R{n}_{role}_w_{ticker}_raw` divided by `sum(raw.values())`) — these reflect the full 4-coord simplex. `signal_override_engine.validate_panel_sums` now raises at backtest start if any enabled panel doesn't sum to 1.0 within 1e-3, so this bug can't recur silently.
 
 ---
 

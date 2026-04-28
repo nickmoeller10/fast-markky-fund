@@ -49,12 +49,12 @@
   },
   "QQQ_SPY_TQQQ_XLU__1d2e3fc9e273.pkl": {
     "end": "2026-03-27",
-    "fetched_at": "2026-04-27T04:43:17.286298+00:00",
+    "fetched_at": "2026-04-27T18:14:47.181039+00:00",
     "first_date": "1999-01-04",
     "last_date": "2026-03-26",
     "python_version": "3.10.11",
     "row_count": 6849,
-    "sha256": "cdb87d1c00e095fea1095b490204371504dfb5443a19e50de63e317258fe4bf1",
+    "sha256": "412578d9e5f5f864b989fbaa9728257cc7637a826eb7b3a1901a3e56da5b1c33",
     "start": "1999-01-04",
     "tickers": [
       "QQQ",
@@ -69,13 +69,33 @@
   },
   "QQQ_SPY_TQQQ_XLU__3b5dbe87638e.pkl": {
     "end": null,
-    "fetched_at": "2026-04-27T04:43:16.801950+00:00",
+    "fetched_at": "2026-04-27T18:14:46.712654+00:00",
     "first_date": "1999-01-04",
-    "last_date": "2026-04-24",
+    "last_date": "2026-04-27",
     "python_version": "3.10.11",
-    "row_count": 6869,
-    "sha256": "6aee43ddd2195fc39032bb22dc408a113ab432bf587ac001c37d21cd1c6cb166",
+    "row_count": 6870,
+    "sha256": "7230d2874a015fa84f6f8a7496e1d9510b96e9550c0c95551d8936aedfed4e2c",
     "start": "1999-01-04",
+    "tickers": [
+      "QQQ",
+      "SPY",
+      "TQQQ",
+      "XLU"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "QQQ_SPY_TQQQ_XLU__8026b647c8af.pkl": {
+    "end": "2026-03-27",
+    "fetched_at": "2026-04-28T21:14:29.999438+00:00",
+    "first_date": "2012-01-17",
+    "last_date": "2026-03-26",
+    "python_version": "3.10.11",
+    "row_count": 3569,
+    "sha256": "16d972e865ef5070768f60cce23d5ee95ee9836eaf7213c6e77907e936d49be1",
+    "start": "2012-01-17",
     "tickers": [
       "QQQ",
       "SPY",
@@ -89,15 +109,86 @@
   },
   "QQQ__770e9520b070.pkl": {
     "end": null,
-    "fetched_at": "2026-04-27T04:43:17.766093+00:00",
+    "fetched_at": "2026-04-27T18:14:47.684010+00:00",
     "first_date": "1999-03-10",
-    "last_date": "2026-04-24",
+    "last_date": "2026-04-27",
     "python_version": "3.10.11",
-    "row_count": 6824,
-    "sha256": "574abad87c2fbf12d6015b3a519f37bce68b30f53047d42a97aad3de42192f74",
+    "row_count": 6825,
+    "sha256": "967984cc352c40c39ee37d16aede165beefbd17ace4ca6d84b71ef7da9d0e7db",
     "start": "1980-01-01",
     "tickers": [
       "QQQ"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "QQQ__e10cd078e176.pkl": {
+    "end": "2020-12-31",
+    "fetched_at": "2026-04-27T19:03:03.419309+00:00",
+    "first_date": "2020-01-02",
+    "last_date": "2020-12-30",
+    "python_version": "3.10.11",
+    "row_count": 252,
+    "sha256": "cf9a39a353f31302d60d3d611282f12168455714f0fa7ac023bbd10fe4816daa",
+    "start": "2020-01-01",
+    "tickers": [
+      "QQQ"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__01202ce282bb.pkl": {
+    "end": "2026-03-27",
+    "fetched_at": "2026-04-28T21:14:31.814697+00:00",
+    "first_date": "2009-11-09",
+    "last_date": "2026-03-26",
+    "python_version": "3.10.11",
+    "row_count": 4119,
+    "sha256": "66ed24dbd8044082b62441de81bc664cdd0083c268c83e0e95a2d0d9f7060ca3",
+    "start": "2009-11-08",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__0fc1b1c7b9ce.pkl": {
+    "end": "1995-02-11",
+    "fetched_at": "2026-04-28T19:41:38.763839+00:00",
+    "first_date": "1993-01-29",
+    "last_date": "1995-02-10",
+    "python_version": "3.10.11",
+    "row_count": 515,
+    "sha256": "34e21369639f70308b0d1a324c723e8ed59470e428bc72ac3fd05329f2d7e35f",
+    "start": "1992-10-24",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__228ffaa5fa33.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-27T18:35:57.362172+00:00",
+    "first_date": "1996-10-28",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 7400,
+    "sha256": "f5ca2c59ef8370b39e1c49a9bb15d7cabb2e4992e4ab2bfec8434b6645399c94",
+    "start": "1996-10-26",
+    "tickers": [
+      "SPY"
     ],
     "yf_kwargs": {
       "auto_adjust": "True",
@@ -125,13 +216,49 @@
   },
   "SPY__4f3cafb1927a.pkl": {
     "end": null,
-    "fetched_at": "2026-04-27T04:43:18.122794+00:00",
+    "fetched_at": "2026-04-27T18:14:48.082329+00:00",
     "first_date": "1996-01-02",
-    "last_date": "2026-04-24",
+    "last_date": "2026-04-27",
     "python_version": "3.10.11",
-    "row_count": 7628,
-    "sha256": "9ac2dbd61561c3eb1de5244a2c5b775716eb3ebdce7d6a645359a84a8e5e0922",
+    "row_count": 7629,
+    "sha256": "e68f003fdf467d1615f1d1604036c2c775294abf753199431ac233ae72f5fb9d",
     "start": "1996-01-01",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__53c76c1974ee.pkl": {
+    "end": "2026-03-27",
+    "fetched_at": "2026-04-28T02:57:23.812010+00:00",
+    "first_date": "1996-10-28",
+    "last_date": "2026-03-26",
+    "python_version": "3.10.11",
+    "row_count": 7399,
+    "sha256": "fb5248ba1f25925220a4f50f5200e3fed61225f3f14089718bd6ffa7cf13a063",
+    "start": "1996-10-26",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__7144965e102b.pkl": {
+    "end": "2026-04-28",
+    "fetched_at": "2026-04-28T04:51:48.230449+00:00",
+    "first_date": "2003-11-04",
+    "last_date": "2026-04-27",
+    "python_version": "3.10.11",
+    "row_count": 5654,
+    "sha256": "2d50f768556283cdef6791820d22b459415da30e6cd67d3895d64b0a799638bb",
+    "start": "2003-11-04",
     "tickers": [
       "SPY"
     ],
@@ -177,6 +304,60 @@
     },
     "yfinance_version": "0.2.66"
   },
+  "SPY__b58202f679e4.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-27T18:42:00.363746+00:00",
+    "first_date": "2021-02-08",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 1290,
+    "sha256": "28c147e79f9203320c92f0b2b040b51808fa601430f0e38af6b78fe6f1f963ab",
+    "start": "2021-02-06",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__bc8773400269.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-28T07:36:40.270000+00:00",
+    "first_date": "2005-01-31",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 5323,
+    "sha256": "e12adb5e33ef46ad5c82876d2f4184f3c0768de7e2cb17703ad749e86d69b124",
+    "start": "2005-01-30",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "SPY__c643ec5facae.pkl": {
+    "end": "2026-04-28",
+    "fetched_at": "2026-04-28T04:23:24.854021+00:00",
+    "first_date": "1996-10-28",
+    "last_date": "2026-04-27",
+    "python_version": "3.10.11",
+    "row_count": 7420,
+    "sha256": "6da22238d6fee8be57d2acd320a8d03d7027029d798e7a76fd95334bed84dafd",
+    "start": "1996-10-26",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
   "SPY__e43019bc1b6c.pkl": {
     "end": "2022-11-01",
     "fetched_at": "2026-04-27T00:24:58.546825+00:00",
@@ -195,14 +376,32 @@
     },
     "yfinance_version": "0.2.66"
   },
+  "SPY__f0dfd2e17251.pkl": {
+    "end": "2026-04-28",
+    "fetched_at": "2026-04-28T04:51:23.906243+00:00",
+    "first_date": "2009-10-26",
+    "last_date": "2026-04-27",
+    "python_version": "3.10.11",
+    "row_count": 4150,
+    "sha256": "276b095af9ab132f770d9f92410ad0b9babfb52af9271a6af3b614fecc354661",
+    "start": "2009-10-26",
+    "tickers": [
+      "SPY"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
   "SPY__f6c5d435a07b.pkl": {
     "end": "2026-03-28",
-    "fetched_at": "2026-04-27T03:09:25.788640+00:00",
+    "fetched_at": "2026-04-28T07:38:58.149894+00:00",
     "first_date": "2009-02-24",
     "last_date": "2026-03-27",
     "python_version": "3.10.11",
     "row_count": 4300,
-    "sha256": "4a3182c1c2947b689a4adf05e118b51a4e5e06b25fe4fddce5cb94a34f1dfdbc",
+    "sha256": "26688e9a46d02f46eed458f204c41b5b6dabcebd3d4de5a9ce9dc027a5045426",
     "start": "2009-02-24",
     "tickers": [
       "SPY"
@@ -215,13 +414,175 @@
   },
   "VIX__17ecdb8a0802.pkl": {
     "end": "2026-03-28",
-    "fetched_at": "2026-04-27T03:09:27.410883+00:00",
+    "fetched_at": "2026-04-28T07:38:59.554069+00:00",
     "first_date": "2011-05-05",
     "last_date": "2026-03-27",
     "python_version": "3.10.11",
     "row_count": 3746,
-    "sha256": "0e19861cb12548d124f6f6b54503032d159733f8155babf0521e14a8296e7506",
+    "sha256": "9f7ad6c96419b3275d8a24747ea4c3a25968c87a48096a620b5320b309ab064c",
     "start": "2011-05-05",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__212ebef0b9f7.pkl": {
+    "end": "2026-03-27",
+    "fetched_at": "2026-04-28T21:13:52.590465+00:00",
+    "first_date": "1999-01-04",
+    "last_date": "2026-03-26",
+    "python_version": "3.10.11",
+    "row_count": 6849,
+    "sha256": "60ed8fa7f2a606cdd1d95829021d87b9461fd9dfdcbe350e795f92ed6d747655",
+    "start": "1999-01-04",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__26d210606d5c.pkl": {
+    "end": "2026-03-27",
+    "fetched_at": "2026-04-28T21:14:32.126154+00:00",
+    "first_date": "2009-11-09",
+    "last_date": "2026-03-26",
+    "python_version": "3.10.11",
+    "row_count": 4119,
+    "sha256": "c21e3cbd97ec2741492140c27a7aedd790a3113001cdf5798575b6e5b34e277e",
+    "start": "2009-11-08",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__2a09edd7cd3c.pkl": {
+    "end": "2026-03-27",
+    "fetched_at": "2026-04-28T21:14:33.477934+00:00",
+    "first_date": "2012-01-17",
+    "last_date": "2026-03-26",
+    "python_version": "3.10.11",
+    "row_count": 3569,
+    "sha256": "0bffcca3ad27197967e81f0c5508987ac357ebf1321351f09506ef097d42408b",
+    "start": "2012-01-17",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__31a1497d1205.pkl": {
+    "end": "2026-04-28",
+    "fetched_at": "2026-04-28T04:51:25.194731+00:00",
+    "first_date": "2012-01-04",
+    "last_date": "2026-04-27",
+    "python_version": "3.10.11",
+    "row_count": 3598,
+    "sha256": "da9efd4e9bcba1c0e74e6403e87ac49ef7124ac35c5c951f4d4b37f92ab82b9c",
+    "start": "2012-01-04",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__404efdc24e85.pkl": {
+    "end": "2026-04-28",
+    "fetched_at": "2026-04-28T04:51:48.595947+00:00",
+    "first_date": "2003-11-04",
+    "last_date": "2026-04-27",
+    "python_version": "3.10.11",
+    "row_count": 5654,
+    "sha256": "b9d6da98f3c95bc03bd6d5288cdab785047467a0862a33b4a0388ad9886934c8",
+    "start": "2003-11-04",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__4aa42e5a3256.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-28T07:36:42.161150+00:00",
+    "first_date": "2007-04-10",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 4773,
+    "sha256": "8e57cf46dbdf046de8e9b77c4616f092832181a9e721f18322f4916e3bca1a9d",
+    "start": "2007-04-10",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__4b5316121581.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-27T18:42:00.532899+00:00",
+    "first_date": "2021-02-08",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 1290,
+    "sha256": "f2f382d759f6f2072a950eca4194dd7169d245eca09142ec9bf3a7f526ecf885",
+    "start": "2021-02-06",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__4c9d4f99ff08.pkl": {
+    "end": "2026-04-28",
+    "fetched_at": "2026-04-28T04:51:24.128073+00:00",
+    "first_date": "2009-10-26",
+    "last_date": "2026-04-27",
+    "python_version": "3.10.11",
+    "row_count": 4150,
+    "sha256": "9ac67d29b9b14160c6056e60466bea93ef3f681f4d9dacc515e88c1816f051a9",
+    "start": "2009-10-26",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__5871c77879a6.pkl": {
+    "end": "2026-04-28",
+    "fetched_at": "2026-04-28T04:51:50.111340+00:00",
+    "first_date": "2006-01-12",
+    "last_date": "2026-04-27",
+    "python_version": "3.10.11",
+    "row_count": 5103,
+    "sha256": "73e868dec205a264dd5d071bb853a7cda337536e70e5fcd475359e895d8894a2",
+    "start": "2006-01-12",
     "tickers": [
       "^VIX"
     ],
@@ -233,12 +594,12 @@
   },
   "VIX__5e4e15a35172.pkl": {
     "end": "2026-03-28",
-    "fetched_at": "2026-04-27T03:09:26.025641+00:00",
+    "fetched_at": "2026-04-28T07:38:58.392703+00:00",
     "first_date": "2009-02-24",
     "last_date": "2026-03-27",
     "python_version": "3.10.11",
     "row_count": 4300,
-    "sha256": "995401a2a643958d782671e68ee093ae36c7f91a9ac198240e14d00ef649b8d3",
+    "sha256": "f5a3c438d61ea22eede78c2deeb0b253dfe048668be689fd0feb550661f797aa",
     "start": "2009-02-24",
     "tickers": [
       "^VIX"
@@ -303,6 +664,78 @@
     },
     "yfinance_version": "0.2.66"
   },
+  "VIX__a73e4d8dd1aa.pkl": {
+    "end": "2026-03-27",
+    "fetched_at": "2026-04-28T02:57:24.222791+00:00",
+    "first_date": "1996-10-28",
+    "last_date": "2026-03-26",
+    "python_version": "3.10.11",
+    "row_count": 7399,
+    "sha256": "2ee0d18e23330a602c05be5bb9e0966c28df57968f0306f7d6cabe0d367cbe89",
+    "start": "1996-10-26",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__a9a7631bed40.pkl": {
+    "end": "2026-04-28",
+    "fetched_at": "2026-04-28T04:23:25.152169+00:00",
+    "first_date": "1996-10-28",
+    "last_date": "2026-04-27",
+    "python_version": "3.10.11",
+    "row_count": 7420,
+    "sha256": "12451caedb8365439b299f8331b269a51181d86f14010fc40f9581e4d7332196",
+    "start": "1996-10-26",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__affe27125b44.pkl": {
+    "end": "1995-02-11",
+    "fetched_at": "2026-04-28T19:41:39.023806+00:00",
+    "first_date": "1992-10-26",
+    "last_date": "1995-02-10",
+    "python_version": "3.10.11",
+    "row_count": 581,
+    "sha256": "df21e56297f2291426c0d9c86487b200ad6be91fa8708c76606fe13f72155e29",
+    "start": "1992-10-24",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__b2cf4e63e821.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-27T18:42:00.914583+00:00",
+    "first_date": "2023-04-17",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 740,
+    "sha256": "e758117a00ed91c9e3270707eb06601293832481555cb98897a4284487a81b0f",
+    "start": "2023-04-17",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
   "VIX__c2bbbefd4ce2.pkl": {
     "end": "2000-01-13",
     "fetched_at": "2026-04-27T00:25:00.261311+00:00",
@@ -323,13 +756,85 @@
   },
   "VIX__ee60f25793fe.pkl": {
     "end": null,
-    "fetched_at": "2026-04-27T04:43:18.447168+00:00",
+    "fetched_at": "2026-04-27T18:14:48.385922+00:00",
     "first_date": "1996-01-02",
-    "last_date": "2026-04-24",
+    "last_date": "2026-04-27",
     "python_version": "3.10.11",
-    "row_count": 7628,
-    "sha256": "411984ef4872bd74fc72d2accbe257070a395ef5a82c5353f4904b8752b55a85",
+    "row_count": 7629,
+    "sha256": "738ac32176e1c3c0fe31fe67eab814af5e716840e2fb17044838f61724e98d7f",
     "start": "1996-01-01",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__eeabd4a43df4.pkl": {
+    "end": "2026-04-28",
+    "fetched_at": "2026-04-28T04:23:27.227122+00:00",
+    "first_date": "1999-01-04",
+    "last_date": "2026-04-27",
+    "python_version": "3.10.11",
+    "row_count": 6870,
+    "sha256": "475064b70a2c96785d3a3c9ba8c237edebccae05e8d551e8abc5ad128234a7b6",
+    "start": "1999-01-04",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__efb5cec23316.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-28T07:36:40.703051+00:00",
+    "first_date": "2005-01-31",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 5323,
+    "sha256": "7d7cebb40890c0caa894e1c541a4a6019a984351ca50656319cbab6343e8d545",
+    "start": "2005-01-30",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__f09a0b638d75.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-27T18:36:00.261322+00:00",
+    "first_date": "1999-01-04",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 6850,
+    "sha256": "cd61063b4fb60fdf30e01b8c751559a5d45eb7d9ab1d1be6cda7a52906a879b7",
+    "start": "1999-01-04",
+    "tickers": [
+      "^VIX"
+    ],
+    "yf_kwargs": {
+      "auto_adjust": "True",
+      "progress": "False"
+    },
+    "yfinance_version": "0.2.66"
+  },
+  "VIX__f566338305cd.pkl": {
+    "end": "2026-03-28",
+    "fetched_at": "2026-04-27T18:35:57.662964+00:00",
+    "first_date": "1996-10-28",
+    "last_date": "2026-03-27",
+    "python_version": "3.10.11",
+    "row_count": 7400,
+    "sha256": "b09d0ee384a4099b61ed724dc209aedd79b83cc8daf5fe955f648ac943d88c70",
+    "start": "1996-10-26",
     "tickers": [
       "^VIX"
     ],

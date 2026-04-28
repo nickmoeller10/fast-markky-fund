@@ -53,6 +53,46 @@ class TestDesiredSignalOverrideMode(unittest.TestCase):
             "upside",
         )
 
+    def test_sticky_upside_when_signal_drifts_to_neutral(self):
+        # R1-style zones: upside above 0, protection below -2.
+        rp = _regime_with_overrides(
+            up={"enabled": True, "direction": "above", "threshold": 0.0},
+            pr={"enabled": True, "direction": "below", "threshold": -2.0},
+        )
+        # Signal=-1.0 is in the neutral band. With current_mode="upside",
+        # we must stay in upside until a new regime or override fires.
+        self.assertEqual(
+            desired_signal_override_mode(-1.0, rp, "upside"), "upside"
+        )
+
+    def test_sticky_protection_when_signal_drifts_to_neutral(self):
+        rp = _regime_with_overrides(
+            up={"enabled": True, "direction": "above", "threshold": 0.0},
+            pr={"enabled": True, "direction": "below", "threshold": -2.0},
+        )
+        self.assertEqual(
+            desired_signal_override_mode(-1.0, rp, "protection"), "protection"
+        )
+
+    def test_switch_from_upside_to_protection_when_protection_fires(self):
+        rp = _regime_with_overrides(
+            up={"enabled": True, "direction": "above", "threshold": 0.0},
+            pr={"enabled": True, "direction": "below", "threshold": -2.0},
+        )
+        # Already in upside; signal crosses into protection territory.
+        self.assertEqual(
+            desired_signal_override_mode(-2.5, rp, "upside"), "protection"
+        )
+
+    def test_switch_from_protection_to_upside_when_upside_fires(self):
+        rp = _regime_with_overrides(
+            up={"enabled": True, "direction": "above", "threshold": 0.0},
+            pr={"enabled": True, "direction": "below", "threshold": -2.0},
+        )
+        self.assertEqual(
+            desired_signal_override_mode(1.0, rp, "protection"), "upside"
+        )
+
     def test_infer_enabled_from_label_when_omitted(self):
         """Panels without explicit enabled:true still turn on if label is set."""
         so = default_signal_overrides_block()

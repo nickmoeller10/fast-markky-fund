@@ -16,14 +16,17 @@ import pandas as pd
 # yfinance tickers; sending them to yfinance would silently return real
 # equity data with normal drawdown.
 #
-# `CASH_TICKER` and `DOLLAR_TICKER` are synonyms for a synthetic money-market-fund
-# proxy. Either label can appear in `config["tickers"]` / `allocation_tickers`
-# and produces the same daily-compounded zero-drawdown series. We support
-# both because "CASH" is a real yfinance ticker (Pathward Financial Inc.) —
-# users may prefer `"$"` to make it visually clear it's not a real equity.
-CASH_TICKER = "CASH"
+# `$` is the canonical name for a synthetic money-market-fund proxy. The
+# legacy alias `"CASH"` is still recognized in configs for backward
+# compatibility, but new configs should use `"$"`. Both labels produce the
+# same daily-compounded zero-drawdown series. We keep "CASH" recognized
+# because "CASH" is also a real yfinance ticker (Pathward Financial Inc.) —
+# the synthetic-ticker filter in this module catches both labels before any
+# yfinance call so the real-equity data can never leak into a backtest.
 DOLLAR_TICKER = "$"
-CASH_ALIASES = frozenset({CASH_TICKER, DOLLAR_TICKER})
+CASH_TICKER = DOLLAR_TICKER          # Canonical synthetic-cash ticker. Equal to "$".
+LEGACY_CASH_TICKER = "CASH"          # Legacy alias still accepted in configs.
+CASH_ALIASES = frozenset({CASH_TICKER, LEGACY_CASH_TICKER})
 CASH_APY = 0.04  # ~Fed-funds-average proxy over 1999-2026
 SYNTHETIC_TICKERS = CASH_ALIASES
 

@@ -12,6 +12,7 @@ from signal_override_engine import (
     desired_signal_override_mode,
     get_target_allocation_for_override,
     describe_signal_override_row,
+    validate_panel_sums,
 )
 from utils import log
 
@@ -835,6 +836,7 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
 
     for _rp in (config.get("regimes") or {}).values():
         ensure_regime_signal_overrides(_rp)
+    validate_panel_sums(config)
 
     if "SPY" in price_df.columns:
         spy_panel_sig = price_df["SPY"].astype(float)
@@ -952,12 +954,29 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
         if skip_day:
             continue
 
+        # Mark portfolio to TODAY's prices before any rebalance logic runs.
+        # Without this, a rebalance on day N would build new shares from
+        # yesterday's close NAV, destroying today's intraday return on every
+        # rebalance day. Non-rebalance days were already correct because the
+        # end-of-day update_portfolio_value() marked to today's prices.
+        portfolio_value = sum(
+            float(shares.get(t, 0) or 0) * float(row_prices[t])
+            for t in shares
+            if t in row_prices.index and pd.notna(row_prices[t])
+        )
+
         raw_sig = signal_total_series.loc[date] if date in signal_total_series.index else np.nan
         s_curr = float(raw_sig) if pd.notna(raw_sig) else np.nan
 
         # -------------------------
         # Dividend handling
         # -------------------------
+        # MUST run before the regime/rebalance blocks below. The dividend
+        # logic reads pre-rebalance share counts to determine which holdings
+        # generated dividends today (`shares.get(ticker, 0) > 0`). If this
+        # block were moved to run after the rebalance, a regime-change-day
+        # rebalance would zero out the original holdings before the dividend
+        # could be recorded, silently dropping the dividend entirely.
         if dividend_reinvestment and dividend_data is not None and not dividend_data.empty:
             # Ensure shares is a dict
             if shares is None:
@@ -965,6 +984,7 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
                 shares = {}
             
             daily_dividends = 0.0
+            reinvested_into_shares = False
             for ticker in allocation_tickers:
                 # Check if ticker exists in dividend_data columns and we have shares
                 if ticker in dividend_data.columns and isinstance(shares, dict) and ticker in shares and shares.get(ticker, 0) > 0:
@@ -1007,15 +1027,25 @@ def run_backtest(price_data, config, dd_fn, regime_detector, rebalance_fn, divid
                                 if target_price > 0 and pd.notna(target_price):
                                     additional_shares = dividend_amount / target_price
                                     shares[dividend_target] = shares.get(dividend_target, 0) + additional_shares
-                                    # Portfolio value will be recalculated below via update_portfolio_value()
-                                    # which includes the new shares
-                            
+                                    reinvested_into_shares = True
+                                else:
+                                    # Target unpriced today (NaN/zero) — fall back to cash
+                                    # so the dividend is never silently dropped.
+                                    cash_balance += dividend_amount
+                                    log(f"Dividend reinvestment target {dividend_target} unpriced on {date}; "
+                                        f"credited ${dividend_amount:.4f} to cash instead.")
+                            else:
+                                # Unknown / out-of-allocation target — fall back to cash.
+                                cash_balance += dividend_amount
+                                log(f"Dividend reinvestment target {dividend_target!r} unavailable on {date}; "
+                                    f"credited ${dividend_amount:.4f} to cash instead.")
+
                             # Log dividend for debugging
                             log(f"Dividend: {ticker} paid ${dividend_amount:.2f} ({dividend_per_share:.4f} per share, {num_shares:.4f} shares)")
             
             # After processing all dividends, update portfolio value if dividends were reinvested into shares
             # (cash dividends are already in cash_balance and will be included in total value)
-            if daily_dividends > 0 and dividend_target != "cash":
+            if daily_dividends > 0 and reinvested_into_shares:
                 # Recalculate portfolio value to include new shares from dividend reinvestment
                 portfolio_value = sum(shares[t] * row_prices.get(t, 0) for t in shares if t in row_prices)
                 log(f"Portfolio value updated after dividend reinvestment: ${portfolio_value:,.2f}")

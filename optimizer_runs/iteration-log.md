@@ -31,9 +31,12 @@
 | 22 | 2 | 3y   | 0.14 | n/a  | 28.9% | -38.7% | 2.74 | 0.47 |
 | 23 | 2 | 3y   | 0.15 | n/a  | **32.0%** | -40.2% | 2.80 | 0.51 |
 | 24 | 2 | 3y   | 0.10 | n/a  | **36.9%** | -42.0% | 7.16 | 0.06 |
-| **25** | **3** | **3y** | **0.11** | **0.20** | **28.6%** | **-29.8%** | **0.77** | **0.88 🏆** |
+| 25 | 3 | 3y | 0.11 | 0.20 | 28.6% | -29.8% | 0.77 | 0.88 (pre-bugfix — see callout) |
+| 26 | 3 | 3y   | TBD  | TBD  | TBD   | TBD    | TBD  | TBD (iter-25 re-run with bugfix) |
 
 **Goal:** CAGR ≥ 30% AND worst-DD ≥ -35%. **Status:** approaching but unmet.
+
+**🐛 Bug discovered between iter 25 and iter 26 (2026-04-27):** Override panels in iter 25's stored config_json silently dropped the CASH key. signal_override_engine renormalized the resulting 31–99% panels to 1.0 at runtime, so `R*_protection_w_cash_raw` / `R*_upside_w_cash_raw` were sampled by Optuna but had **zero effect on the executed allocation**. iter 25's 0.88 score is real but explored only a 3-coord subspace (TQQQ/QQQ/XLU); cash on overrides was effectively a phantom dimension. Fixed: panel-sum invariant added, `ensure_regime_signal_overrides` preserves extra ticker keys, production config rebuilt from iter-25 raw weights with full 4-coord panels (each summing to 1.0). Production also renamed CASH → `$` to disambiguate from the real Pathward Financial yfinance ticker, and the worst-case simulator + Streamlit UI no longer leak synthetic tickers to yfinance. iter 26 re-runs iter 25's exact constraints with the bug-fixed pipeline.
 
 ---
 
@@ -134,3 +137,10 @@
 - **Key constraints:** 3-regime, 3y window. R1 ultra TQQQ + cash protection. R2 passthrough cash-dominant. **R3 base FORCED 100% CASH** (force_zero on QQQ + XLU). dd_t1 [0.10, 0.14], dd_t2 [0.18, 0.24].
 - **Result (trial 24):** CAGR **28.61%** (close to 30% target), best_cagr **45.40%**, p95 **40.15%**, DD **-29.80%** ⭐ (well inside -35% target), rebs/y **0.77** (low!), score **0.88 ⭐⭐ ALL-TIME RECORD**. R1 = 81% TQQQ. R2 = 89% CASH + 6% QQQ + 5% XLU. R3 = 100% CASH.
 - **Lesson:** **"Absolute defense" R3 = 100% CASH is the structural breakthrough.** With R3 at pure cash, the moment market crosses dd_t2 (~20% DD), portfolio stops losing. Combined with R2 passthrough (no rebs while crossing R2 band) and R1 ultra-leverage, this gives the best CAGR/DD pair seen so far. Best CAGR/DD/rebs simultaneously: 28.6% / -29.8% / 0.77. **Active hypothesis: this structure is now the baseline; further iterations refine WITHIN it.**
+
+### iter 26 — re-run of iter 25 with bug-fixed pipeline (cash-on-overrides now executes)
+- **Hypothesis:** Iter 25's score (0.88, CAGR 28.6%, DD −29.8%) was earned in a 3-coord override-panel space because CASH was silently dropped from override panels at config-paste time and renormalized away at runtime. The optimizer was searching a 4-coord simplex but only the TQQQ/QQQ/XLU dimensions actually reached execution. With the bug fixed (`ensure_regime_signal_overrides` now preserves $-keyed weights; `validate_panel_sums` raises if a panel doesn't sum to 1.0; the production config now uses `$` as the CASH alias), iter 25's exact constraints will explore the genuine 4-coord space. We expect: a different champion than iter 25's trial 24, likely with non-zero `$` weight on R1/R2 override panels (the same raw weights that iter 25 sampled but never executed). DD may improve further if the optimizer converges on protection panels that hold cash during shallow-bear regimes; CAGR could go either way depending on whether the new freedom helps or just spreads the search thinner.
+- **Key constraints:** EXACT copy of iter25_constraints.json. The constraints file's `notes` field documents the bug-fix context. The original "widen R1 to 13–16%" hypothesis is deferred to iter 27+ once we have a comparable post-bugfix baseline.
+- **Note on prior iter-26 entry:** the widen-R1 plan written earlier today was superseded by the bug discovery; original constraints file overwritten in place.
+- **Result:** TBD
+- **Lesson:** TBD
