@@ -41,23 +41,28 @@ LOCKED_ROW_COUNT: int = 6849
 
 
 @pytest.fixture(scope="module")
-def production_equity_df(production_config_dict):
-    """Run the full production backtest once per module against frozen cache."""
-    os.environ.setdefault("FMF_DATA_MODE", "frozen")
+def production_panel(production_config_dict):
+    """Load the production panel once per module."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("FMF_DATA_MODE", os.environ.get("FMF_DATA_MODE", "frozen"))
+        from data_loader import load_price_data
+        cfg = production_config_dict
+        return load_price_data(
+            cfg["tickers"], cfg["start_date"], cfg["end_date"]
+        )
 
-    from data_loader import load_price_data
+
+@pytest.fixture(scope="module")
+def production_equity_df(production_config_dict, production_panel):
+    """Run the full production backtest once per module against frozen cache."""
     from signal_override_engine import validate_panel_sums
 
     cfg = production_config_dict
     # Sanity: the config we're about to lock must pass the panel-sum invariant.
     validate_panel_sums(cfg)
 
-    panel = load_price_data(
-        cfg["tickers"], cfg["start_date"], cfg["end_date"]
-    )
-
     eq, _, _ = run_backtest(
-        panel,
+        production_panel,
         cfg,
         compute_drawdown_from_ath,
         determine_regime,
@@ -163,16 +168,12 @@ def test_production_locked_row_count(production_equity_df):
 
 
 @pytest.mark.integration
-def test_production_mark_invariant(production_equity_df, production_config_dict):
+def test_production_mark_invariant(production_equity_df, production_config_dict, production_panel):
     """Value[t] == sum(shares × price) + Cash on every row of the production run."""
-    from data_loader import load_price_data
-
-    os.environ.setdefault("FMF_DATA_MODE", "frozen")
     cfg = production_config_dict
-    panel = load_price_data(cfg["tickers"], cfg["start_date"], cfg["end_date"])
 
     eq = production_equity_df
-    panel_aligned = panel.reindex(pd.to_datetime(eq["Date"]))
+    panel_aligned = production_panel.reindex(pd.to_datetime(eq["Date"]))
     max_rel_diff = 0.0
     worst_date = None
     for i, row in eq.iterrows():

@@ -1,4 +1,5 @@
 """Shared pytest fixtures for the Fast Markky Fund test suite."""
+import copy
 import numpy as np
 import pandas as pd
 import pytest
@@ -131,9 +132,6 @@ def equity_from_values():
     return make_equity_df_from_values
 
 
-import copy as _copy
-
-
 @pytest.fixture(scope="module")
 def production_config_dict():
     """Deep copy of the live production config from config.py.
@@ -144,7 +142,7 @@ def production_config_dict():
     overrides, etc.) — not a hand-rolled minimal subset.
     """
     from config import CONFIG
-    return _copy.deepcopy(CONFIG)
+    return copy.deepcopy(CONFIG)
 
 
 def pytest_addoption(parser):
