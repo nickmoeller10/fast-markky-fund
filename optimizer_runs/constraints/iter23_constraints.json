@@ -1,0 +1,36 @@
+{
+  "n_regimes_choices": [2],
+  "drawdown_window_choices": [3],
+  "threshold_bounds": {
+    "dd_t1": [0.14, 0.17]
+  },
+  "force_zero_params": [
+    "R1_base_w_cash_raw",
+    "R1_upside_w_cash_raw",
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15],
+    "R1_protection_w_cash_raw": [0.6, 1.0],
+    "R1_protection_w_qqq_raw": [0.0, 0.3],
+    "R1_protection_w_xlu_raw": [0.0, 0.3],
+    "R2_base_w_cash_raw": [0.6, 1.0],
+    "R2_base_w_qqq_raw": [0.0, 0.3],
+    "R2_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "enable_cash_in_regimes": ["R1", "R2"],
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["match"],
+    "R2_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 23: SIGNAL-DRIVEN CASH PROTECTION. Enable CASH in R1 simplex but force R1 base CASH=0 (R1 base stays TQQQ-heavy). Force R1 protection CASH ≥ 0.6 raw → when signal turns weak (≤ -1 or -2), strategy de-risks DIRECTLY to CASH-dominant allocation, BEFORE the dd_t1 regime threshold is crossed. This decouples DD from dd_t1 width — wider R1 (14-17%) for more compounding, but protection-mode CASH for fast de-risk. R1 upside still TQQQ/QQQ/XLU only (no CASH on bull signals). Hypothesis: this breaks below -35% DD while preserving CAGR ~30%."
+}

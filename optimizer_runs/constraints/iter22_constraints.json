@@ -1,0 +1,32 @@
+{
+  "n_regimes_choices": [2],
+  "drawdown_window_choices": [3],
+  "threshold_bounds": {
+    "dd_t1": [0.13, 0.15]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15],
+    "R1_protection_w_xlu_raw": [0.6, 1.0],
+    "R2_base_w_cash_raw": [0.6, 1.0],
+    "R2_base_w_qqq_raw": [0.0, 0.3],
+    "R2_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "enable_cash_in_regimes": ["R2"],
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["match"],
+    "R2_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 22: HIT THE TARGET. iter 21 hit CAGR 35% but DD -40% — too wide R1 (16.85%). iter 22 narrows dd_t1 to [13%, 15%] to find the sweet spot where CAGR ~30% AND DD ~-32%. Same 2-regime + 3y window + ultra R1 + cash R2 structure that proved CAGR is achievable. Goal: CAGR ≥ 30% AND DD ≥ -35%."
+}

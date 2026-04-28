@@ -1,0 +1,32 @@
+{
+  "n_regimes_choices": [2],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.10, 0.16]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15],
+    "R1_protection_w_xlu_raw": [0.6, 1.0],
+    "R2_base_w_cash_raw": [0.7, 1.0],
+    "R2_base_w_qqq_raw": [0.0, 0.3],
+    "R2_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "enable_cash_in_regimes": ["R2"],
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["match"],
+    "R2_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 16: HYBRID — combine iter 13's wide R1 band (high CAGR) with iter 12's slow 2-yr window (low rebalances) and cash-dominant R2. R1 band 10-16% (wider than iter 12's 5-8%, narrower than iter 13's 0-14.7%) with ULTRA-aggressive TQQQ ≥74% normalized. R2 forced cash-dominant (CASH ≥54% normalized, QQQ/XLU ≤30% raw each). 2-regime structure means single transition per drawdown event (lower rebs/y than 3-regime). Hypothesis: this picks up iter 13's CAGR while reducing rebs/y from 2.27 toward iter 12's 0.59. Target: CAGR >= 27%, worst_DD >= -32%, rebs/y <= 1.0."
+}

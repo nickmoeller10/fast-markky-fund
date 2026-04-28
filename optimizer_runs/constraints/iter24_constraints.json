@@ -1,0 +1,36 @@
+{
+  "n_regimes_choices": [2],
+  "drawdown_window_choices": [3],
+  "threshold_bounds": {
+    "dd_t1": [0.09, 0.13]
+  },
+  "force_zero_params": [
+    "R1_base_w_cash_raw",
+    "R1_upside_w_cash_raw",
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15],
+    "R1_protection_w_cash_raw": [0.7, 1.0],
+    "R1_protection_w_qqq_raw": [0.0, 0.25],
+    "R1_protection_w_xlu_raw": [0.0, 0.25],
+    "R2_base_w_cash_raw": [0.6, 1.0],
+    "R2_base_w_qqq_raw": [0.0, 0.3],
+    "R2_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "enable_cash_in_regimes": ["R1", "R2"],
+  "protection_threshold_bounds": {
+    "R1": [-1, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["match"],
+    "R2_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 24: BELT-AND-SUSPENDERS. Narrow dd_t1 [0.09, 0.13] (regime change catches fast crashes) + R1 protection threshold pinned at -1 (max-sensitive — fires on slightest signal weakness for slow grinds) + R1 protection forced cash-dominant ≥54% normalized. Tighter cash bounds in R1 protection (raw [0.7, 1.0] vs iter 23's [0.6, 1.0]) so when protection fires we go really heavy cash. Hypothesis: this dual de-risk mechanism breaks below -35% DD while keeping CAGR ≥ 27%."
+}

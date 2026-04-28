@@ -1,0 +1,43 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [3],
+  "threshold_bounds": {
+    "dd_t1": [0.10, 0.14],
+    "dd_t2": [0.18, 0.24]
+  },
+  "force_zero_params": [
+    "R1_base_w_cash_raw",
+    "R1_upside_w_cash_raw",
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_base_w_tqqq_raw",
+    "R3_base_w_qqq_raw",
+    "R3_base_w_xlu_raw",
+    "R3_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15],
+    "R1_protection_w_cash_raw": [0.6, 1.0],
+    "R1_protection_w_qqq_raw": [0.0, 0.3],
+    "R1_protection_w_xlu_raw": [0.0, 0.3],
+    "R2_base_w_cash_raw": [0.6, 1.0],
+    "R2_base_w_qqq_raw": [0.0, 0.3],
+    "R2_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "enable_cash_in_regimes": ["R1", "R2", "R3"],
+  "protection_threshold_bounds": {
+    "R1": [-2, -2]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["hold"],
+    "R2_rebalance_on_upward": ["hold"],
+    "R3_rebalance_on_downward": ["match"],
+    "R3_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 25: ABSOLUTE DEFENSE in R3. Force R3 base to 100% CASH (force_zero on TQQQ/QQQ/XLU base raws). When QQQ drawdown crosses dd_t2 (~20%), strategy goes to PURE CASH — no XLU, no QQQ — eliminating XLU's own -39% 2008 drawdown contribution. R1 ultra TQQQ + signal-driven cash protection (threshold pinned at -2). R2 passthrough cash-dominant. R3 upside/protection still searchable (signal can override the 100% cash if very strong buy/sell signals). Hypothesis: capping DD at the damage that happens BEFORE R3 entry should land DD around -32% to -35% with CAGR ≥ 28%."
+}

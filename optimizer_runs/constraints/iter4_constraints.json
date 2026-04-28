@@ -1,0 +1,24 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.06, 0.12],
+    "dd_t2": [0.15, 0.22]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_upside_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_protection_w_tqqq_raw"
+  ],
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["hold"],
+    "R2_rebalance_on_upward": ["hold"],
+    "R3_rebalance_on_downward": ["match"],
+    "R3_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 4: lock structural insights from iter 3. R1 fully follows market (match/match). R2 is passthrough (hold/hold). R3 commits on entry then holds (match/hold). All R2 modes + R1.protection + R3.protection are TQQQ-free. TPE now focuses on tuning weights only."
+}

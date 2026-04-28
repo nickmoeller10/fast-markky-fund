@@ -1,0 +1,58 @@
+{
+  "n_regimes_choices": null,
+  "drawdown_window_choices": null,
+  "threshold_bounds": {
+    "dd_t1": [
+      0.1361,
+      0.1461
+    ],
+    "dd_t2": [
+      0.1933,
+      0.2462
+    ],
+    "dd_t3": [
+      0.4304,
+      0.469
+    ],
+    "dd_t4": [
+      0.6535,
+      0.7129
+    ]
+  },
+  "upside_threshold_bounds": {},
+  "protection_threshold_bounds": {},
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": [
+      "match"
+    ],
+    "R1_rebalance_on_upward": [
+      "match"
+    ],
+    "R2_rebalance_on_downward": [
+      "match"
+    ],
+    "R2_rebalance_on_upward": [
+      "hold"
+    ],
+    "R3_rebalance_on_downward": [
+      "match"
+    ],
+    "R3_rebalance_on_upward": [
+      "hold"
+    ],
+    "R4_rebalance_on_downward": [
+      "match"
+    ],
+    "R5_rebalance_on_downward": [
+      "match"
+    ],
+    "R5_rebalance_on_upward": [
+      "match"
+    ]
+  },
+  "force_zero_params": [],
+  "weight_bounds": {},
+  "forced_base_allocations": {},
+  "enable_cash_in_regimes": [],
+  "notes": "Auto-derived from top-10 of 'iter22', narrow_factor=0.5"
+}

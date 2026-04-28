@@ -1,0 +1,28 @@
+{
+  "n_regimes_choices": [2],
+  "drawdown_window_choices": [1, 2, 3],
+  "threshold_bounds": {
+    "dd_t1": [0.05, 0.15]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.7, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.3],
+    "R1_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "enable_cash_in_regimes": ["R2"],
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["match"],
+    "R2_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 13: SIMPLER 2-regime structure. R1 (calm: 0% to 5-15% DD) = TQQQ-heavy. R2 (everything below R1) = CASH/XLU/QQQ mix searched freely. Hypothesis: with no R3, the strategy commits to defensive R2 once any drawdown threshold is breached and stays there until recovery. Should produce fewer rebalances than 3-regime (single down-and-up transition per drawdown event). Wider dd_t1 range [5-15%] explores where the best single threshold lives. drawdown_window can be 1, 2, or 3 years."
+}

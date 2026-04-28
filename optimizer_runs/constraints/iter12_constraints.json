@@ -1,0 +1,36 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.05, 0.08],
+    "dd_t2": [0.13, 0.20]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_base_w_tqqq_raw",
+    "R3_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15],
+    "R3_base_w_cash_raw": [0.7, 1.0],
+    "R3_base_w_qqq_raw": [0.0, 0.3],
+    "R3_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "enable_cash_in_regimes": ["R2", "R3"],
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["hold"],
+    "R2_rebalance_on_upward": ["hold"],
+    "R3_rebalance_on_downward": ["match"],
+    "R3_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 12: PROPER R3 CASH DOMINANCE + ultra R1. Iter 11's R3_base_w_cash_raw>=0.5 didn't enforce normalized dominance because QQQ/XLU raws were unbounded. Now: cash raw [0.7,1.0] AND QQQ/XLU each capped at 0.3 → R3 normalized CASH guaranteed >=54%, up to 100%. R1 push: raw TQQQ [0.85,1.0], QQQ/XLU each [0,0.15] → normalized TQQQ guaranteed >=74%. Slightly wider R1 band (dd_t1 [5%, 8%]) for more compounding time. Hypothesis: ultra-leveraged R1 + truly cash-dominant R3 should push CAGR closer to 30% while keeping worst_DD <-35%."
+}

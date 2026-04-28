@@ -1,0 +1,16 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.06, 0.12],
+    "dd_t2": [0.15, 0.22]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_upside_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_protection_w_tqqq_raw"
+  ],
+  "notes": "Iter 3: KEEP R2 TQQQ-free. ADD: force TQQQ=0 in R1.protection and R3.protection (protection modes = de-risk; leverage there contradicts intent). Hypothesis from iter 2: R1 protection holding ~30% TQQQ caused damage during rapid drops where T+1-lagged regime switch happens after the leverage hits."
+}

@@ -1,0 +1,29 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.06, 0.12],
+    "dd_t2": [0.15, 0.22]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_base_w_tqqq_raw",
+    "R3_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.7, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.3],
+    "R1_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["hold"],
+    "R2_rebalance_on_upward": ["hold"],
+    "R3_rebalance_on_downward": ["match"],
+    "R3_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 5: TEST USER THEORY — heavy TQQQ in R1 base (raw bounds give ≥54% normalized TQQQ in R1), TQQQ FREE in R2/R3 upside overrides (so signals can override TQQQ-out and 'go for it'), TQQQ=0 in all base/protection of R2/R3 and R1.protection. Compared to iter 4, this RELAXES the previously-forced-zero R2_upside_w_tqqq_raw (now free) but ADDS forced zero on R3_base_w_tqqq_raw (was free). Hypothesis: leverage in R1 (calm) is OK, leverage during stressed regimes' base/protection causes deepest drawdowns; signal overrides should be the only mechanism allowing leverage in stressed regimes."
+}

@@ -1,0 +1,40 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.08, 0.12],
+    "dd_t2": [0.16, 0.22]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_base_w_tqqq_raw",
+    "R3_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15],
+    "R1_protection_w_xlu_raw": [0.6, 1.0],
+    "R2_base_w_cash_raw": [0.6, 1.0],
+    "R2_base_w_qqq_raw": [0.0, 0.25],
+    "R2_base_w_xlu_raw": [0.0, 0.25],
+    "R3_base_w_cash_raw": [0.7, 1.0],
+    "R3_base_w_qqq_raw": [0.0, 0.3],
+    "R3_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "enable_cash_in_regimes": ["R2", "R3"],
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["hold"],
+    "R2_rebalance_on_upward": ["hold"],
+    "R3_rebalance_on_downward": ["match"],
+    "R3_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 19: FIND THE SWEET SPOT. iter 18 had R1 going to 14.5% → CAGR 27% but DD -37%. iter 12 had R1 to 6.7% → CAGR 23.6% DD -27%. iter 19 tests R1 in [8%, 12%] — splitting the difference. Tighter R2 cash bounds (60% cash min) for stronger transition buffer. Hypothesis: R1 around 10% gives ~25% CAGR and ~-30% DD, with iter-18-level rebs (~0.4)."
+}

@@ -1,0 +1,22 @@
+{
+  "n_regimes_choices": [2],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.50, 0.50]
+  },
+  "force_zero_params": [
+    "R1_base_w_qqq_raw", "R1_base_w_xlu_raw",
+    "R1_upside_w_qqq_raw", "R1_upside_w_xlu_raw",
+    "R1_protection_w_qqq_raw", "R1_protection_w_xlu_raw",
+    "R2_base_w_qqq_raw", "R2_base_w_xlu_raw",
+    "R2_upside_w_qqq_raw", "R2_upside_w_xlu_raw",
+    "R2_protection_w_qqq_raw", "R2_protection_w_xlu_raw"
+  ],
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["match"],
+    "R2_rebalance_on_upward": ["match"]
+  },
+  "notes": "Iter 15: BENCHMARK — 100% TQQQ at all times, no protections. Forces every regime panel (R1/R2 base/upside/protection) to QQQ=0 + XLU=0, leaving TQQQ as the only weight. dd_t1 pinned at 50% so R1 covers any normal-conditions drawdown; R2 only triggers on extreme crashes (which makes no difference since R2 is also 100% TQQQ). All rebalance flags = match. Hypothesis: this exposes the absolute CAGR ceiling (with TQQQ leverage decay) and the absolute DD floor (worst possible drawdown) — provides reference points to compare regime-strategy iterations against."
+}

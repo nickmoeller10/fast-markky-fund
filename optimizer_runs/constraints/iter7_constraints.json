@@ -1,0 +1,36 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.03, 0.06],
+    "dd_t2": [0.08, 0.13]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_base_w_tqqq_raw",
+    "R3_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15],
+    "R2_base_w_qqq_raw": [0.0, 0.30],
+    "R2_base_w_xlu_raw": [0.7, 1.0],
+    "R3_base_w_qqq_raw": [0.0, 0.20],
+    "R3_base_w_xlu_raw": [0.8, 1.0]
+  },
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["hold"],
+    "R2_rebalance_on_upward": ["hold"],
+    "R3_rebalance_on_downward": ["match"],
+    "R3_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 7: FORCE R2 + R3 to be XLU-dominant. Iter 6 diagnosis showed R2 base at 82% QQQ leaking damage during 2008 + 2022 bear markets (R2 = 5-15% DD band, equity-heavy). Now: R2 base ≥70% XLU raw (≥58% normalized), QQQ capped at 30%. R3 base ≥80% XLU raw (~67% normalized min). ALSO tighten dd_t2 to [8%, 13%] so deep-defensive R3 takes over EARLIER. R1 stays ultra-aggressive (R1 settings unchanged from iter 6). Theory: every non-R1 regime should aggressively de-risk."
+}

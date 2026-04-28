@@ -1,0 +1,32 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.03, 0.06],
+    "dd_t2": [0.15, 0.22]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_base_w_tqqq_raw",
+    "R3_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15]
+  },
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["hold"],
+    "R2_rebalance_on_upward": ["hold"],
+    "R3_rebalance_on_downward": ["match"],
+    "R3_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 6: USER THEORY — R1 is alpha factory, everything else is defense. (1) R1 ULTRA-aggressive: TQQQ raw [0.85,1.0], QQQ/XLU capped at 0.15 → ≥74% normalized TQQQ. (2) R1 band TIGHT: dd_t1 [3%,6%] — exit R1 fast on any drawdown. (3) R1 protection EARLIER: threshold [-2,-1] — fires on mild signal weakness. (4) R2/R3 base+protection TQQQ-free; only upside overrides can re-add TQQQ on strong buy signals. R1's narrow exposure window + early protection should cap leverage damage during slow grinds (the iter 5 failure mode)."
+}

@@ -2,7 +2,22 @@
 
 > **Read this first.** Quick context map so you (Claude or any new contributor) can answer questions and make design decisions without re-analyzing the whole codebase. Keep this file pruned and accurate — if it stops being trustworthy, it stops being useful.
 >
-> Last updated: 2026-04-26 (during test suite work).
+> Last updated: 2026-04-26 (test suite work) → 2026-04-27 (config optimizer + CASH support).
+
+---
+
+## 🟢 ACTIVE ITERATIVE WORK — read this if resuming the optimizer
+
+There is a **long-running iterative optimization** in progress. To resume from a fresh chat:
+
+1. Read **`docs/superpowers/methodologies/iterative-config-search.md`** — the resumable skill (full methodology, heuristics, dead-ends, current champion, hypothesis ladder).
+2. Read **`optimizer_runs/iteration-log.md`** — running per-iteration narrative; scroll to the latest entry.
+3. List **`optimizer_runs/constraints/iter*_constraints.json`** for the active hypothesis JSON.
+4. Run **`python3 scripts/show_best.py --study iter<N>`** for the latest champion's full allocation.
+
+**Current champion (iter 25):** 3-regime, 3-yr window, CAGR 28.6%, max-DD −29.8%, score 0.88. R3 base = 100% CASH (absolute defense). Goal is CAGR ≥ 30% AND DD ≥ −35%; gap is ~1.4 pts on CAGR.
+
+**Working agreement:** the user wants iterations to continue past the goal, not stop at it. Each iteration: hypothesis → constraints → run → analyze → present full allocations → log → design next.
 
 ---
 
@@ -423,7 +438,7 @@ streamlit run app.py
 - **Test suite design** — `docs/superpowers/specs/test-suite-design.md`
 - **Test suite implementation** — `docs/superpowers/plans/test-suite-implementation.md`
 - **Data provenance + production regression** (resolved by `data_cache.py`) — `docs/superpowers/plans/data-provenance-and-production-regression.md`
-- **Iterative config search methodology** — `docs/superpowers/methodologies/iterative-config-search.md`. The standard playbook for tuning regime allocations: 50-trial Monte Carlo batches, analyze trends, narrow constraints, repeat 5–7+ times. Run via `python3 scripts/iterate.py --study iterN`.
+- **Iterative config search methodology (RESUMABLE SKILL)** — `docs/superpowers/methodologies/iterative-config-search.md`. The single resume-from-new-chat document for the active optimizer work. Contains methodology, discovered heuristics, dead-ends, the Pareto frontier snapshot, the current champion, and the active hypothesis ladder. Pair with `optimizer_runs/iteration-log.md` (running per-iter narrative).
 
 ---
 

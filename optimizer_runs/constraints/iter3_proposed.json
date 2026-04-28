@@ -1,0 +1,58 @@
+{
+  "n_regimes_choices": null,
+  "drawdown_window_choices": null,
+  "threshold_bounds": {
+    "dd_t1": [
+      0.0975,
+      0.1075
+    ],
+    "dd_t2": [
+      0.1765,
+      0.2151
+    ],
+    "dd_t3": [
+      0.2377,
+      0.266
+    ],
+    "dd_t4": [
+      0.6148,
+      0.6927
+    ]
+  },
+  "upside_threshold_bounds": {},
+  "protection_threshold_bounds": {},
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": [
+      "match"
+    ],
+    "R1_rebalance_on_upward": [
+      "match"
+    ],
+    "R2_rebalance_on_downward": [
+      "hold"
+    ],
+    "R2_rebalance_on_upward": [
+      "hold"
+    ],
+    "R3_rebalance_on_downward": [
+      "match"
+    ],
+    "R3_rebalance_on_upward": [
+      "hold"
+    ],
+    "R4_rebalance_on_downward": [
+      "match"
+    ],
+    "R4_rebalance_on_upward": [
+      "match"
+    ],
+    "R5_rebalance_on_downward": [
+      "hold"
+    ],
+    "R5_rebalance_on_upward": [
+      "hold"
+    ]
+  },
+  "force_zero_params": [],
+  "notes": "Auto-derived from top-10 of 'iter3', narrow_factor=0.5"
+}

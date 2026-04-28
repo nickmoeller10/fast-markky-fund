@@ -1,0 +1,14 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.06, 0.12],
+    "dd_t2": [0.15, 0.22]
+  },
+  "force_zero_params": [
+    "R2_base_w_tqqq_raw",
+    "R2_upside_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw"
+  ],
+  "notes": "Iter 2: validate user hypothesis - TQQQ=0 in all R2 modes (base/upside/protection). Pin n_regimes=3 (most common in iter1 top 10). Pin drawdown_window=2. Narrow R1/R2 and R2/R3 boundaries to where iter1 top 10 clustered (8-20% DD band)."
+}

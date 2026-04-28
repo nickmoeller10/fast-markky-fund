@@ -1,0 +1,38 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.04, 0.07],
+    "dd_t2": [0.10, 0.18]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_base_w_tqqq_raw",
+    "R3_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.8, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.2],
+    "R1_base_w_xlu_raw": [0.0, 0.2],
+    "R1_protection_w_xlu_raw": [0.7, 1.0],
+    "R1_protection_w_qqq_raw": [0.0, 0.3],
+    "R3_base_w_qqq_raw": [0.0, 0.2],
+    "R3_base_w_xlu_raw": [0.7, 1.0]
+  },
+  "forced_base_allocations": {
+    "R2": {"CASH": 0.5, "XLU": 0.5, "TQQQ": 0.0, "QQQ": 0.0}
+  },
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["hold"],
+    "R2_rebalance_on_upward": ["hold"],
+    "R3_rebalance_on_downward": ["match"],
+    "R3_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 9: USER THEORY — add CASH to R2. R1 stays heavy-TQQQ but R1 protection forced XLU-dominant (signal-driven safeguard). R2 base is now 50% CASH + 50% XLU (forced — eliminates XLU's own 2008 -39% drawdown leakage by adding zero-volatility cash sleeve). R2 upside is FREE (signal can override into TQQQ on strong buy signals). R3 base XLU-dominant; R3 upside is FREE (signal-driven aggressive re-entry on capitulation reversal). All protections forced TQQQ=0. Hypothesis: cash sleeve in R2 is the missing puzzle piece — it caps XLU losses during 2008 + 2022 when XLU itself was bleeding."
+}

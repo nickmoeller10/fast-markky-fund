@@ -1,0 +1,37 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.10, 0.16],
+    "dd_t2": [0.18, 0.25]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_base_w_tqqq_raw",
+    "R3_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15],
+    "R1_protection_w_xlu_raw": [0.6, 1.0],
+    "R3_base_w_cash_raw": [0.7, 1.0],
+    "R3_base_w_qqq_raw": [0.0, 0.3],
+    "R3_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "enable_cash_in_regimes": ["R2", "R3"],
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["hold"],
+    "R2_rebalance_on_upward": ["hold"],
+    "R3_rebalance_on_downward": ["match"],
+    "R3_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 17: COMBINE THE BEST OF EACH. Wide R1 (10-16% DD, like iter 13/16 → high CAGR) + R2 passthrough (hold/hold, like iter 12 → suppresses rebalances) + cash-dominant R3 (≥54% normalized cash). 3-regime structure. 2y window. Expected outcome: iter 13/16-level CAGR (~26-27%) with iter 12-level rebs (0.5-1.0/y). If this works, it dominates all prior iterations on every axis simultaneously."
+}

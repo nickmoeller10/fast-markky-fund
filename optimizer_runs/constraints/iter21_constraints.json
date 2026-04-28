@@ -1,0 +1,32 @@
+{
+  "n_regimes_choices": [2],
+  "drawdown_window_choices": [3],
+  "threshold_bounds": {
+    "dd_t1": [0.10, 0.18]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15],
+    "R1_protection_w_xlu_raw": [0.6, 1.0],
+    "R2_base_w_cash_raw": [0.6, 1.0],
+    "R2_base_w_qqq_raw": [0.0, 0.3],
+    "R2_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "enable_cash_in_regimes": ["R2"],
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["match"],
+    "R2_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 21: HYBRID — iter 16's 2-regime + iter 20's 3y window. Single decisive R1↔R2 transition (no R2 passthrough complications). 3y window means regime peak doesn't drift fast → fewer false transitions. R1 ULTRA TQQQ (≥74% normalized), R2 CASH-dominant (≥46% normalized after simplex). Hypothesis: this combines iter 16's CAGR (27%) with iter 20's DD (-26%) and possibly fewer rebs since 3y window dampens regime crossings."
+}

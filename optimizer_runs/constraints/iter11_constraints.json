@@ -1,0 +1,34 @@
+{
+  "n_regimes_choices": [3],
+  "drawdown_window_choices": [2],
+  "threshold_bounds": {
+    "dd_t1": [0.04, 0.07],
+    "dd_t2": [0.13, 0.20]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_base_w_tqqq_raw",
+    "R3_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.75, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.25],
+    "R1_base_w_xlu_raw": [0.0, 0.25],
+    "R3_base_w_cash_raw": [0.5, 1.0]
+  },
+  "enable_cash_in_regimes": ["R2", "R3"],
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["hold"],
+    "R2_rebalance_on_upward": ["hold"],
+    "R3_rebalance_on_downward": ["match"],
+    "R3_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 11: PUSH CAGR. iter 10 cracked drawdowns by putting CASH in R3 (best worst_DD -32.8%). Top trial had R1 base only 56% TQQQ, leaving CAGR at 22%. Now: floor R1 TQQQ raw at 0.75 (≥60% normalized; aggressive R1 leverage during calm) AND floor R3 CASH raw at 0.5 (lock in the deep-crisis cash defense). Hypothesis: R3's cash sleeve absorbs the 2008/2022 tail risk, so R1 can be aggressive without blowing past -35% DD. Target: CAGR >25% with worst_DD ≥ -35%."
+}

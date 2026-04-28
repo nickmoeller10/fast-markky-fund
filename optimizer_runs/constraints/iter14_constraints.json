@@ -1,0 +1,41 @@
+{
+  "n_regimes_choices": [4],
+  "drawdown_window_choices": [1, 2, 3],
+  "threshold_bounds": {
+    "dd_t1": [0.03, 0.07],
+    "dd_t2": [0.08, 0.15],
+    "dd_t3": [0.18, 0.30]
+  },
+  "force_zero_params": [
+    "R1_protection_w_tqqq_raw",
+    "R2_base_w_tqqq_raw",
+    "R2_protection_w_tqqq_raw",
+    "R3_base_w_tqqq_raw",
+    "R3_protection_w_tqqq_raw",
+    "R4_base_w_tqqq_raw",
+    "R4_protection_w_tqqq_raw"
+  ],
+  "weight_bounds": {
+    "R1_base_w_tqqq_raw": [0.85, 1.0],
+    "R1_base_w_qqq_raw": [0.0, 0.15],
+    "R1_base_w_xlu_raw": [0.0, 0.15],
+    "R4_base_w_cash_raw": [0.7, 1.0],
+    "R4_base_w_qqq_raw": [0.0, 0.3],
+    "R4_base_w_xlu_raw": [0.0, 0.3]
+  },
+  "enable_cash_in_regimes": ["R2", "R3", "R4"],
+  "protection_threshold_bounds": {
+    "R1": [-2, -1]
+  },
+  "rebalance_choices": {
+    "R1_rebalance_on_downward": ["match"],
+    "R1_rebalance_on_upward": ["match"],
+    "R2_rebalance_on_downward": ["hold"],
+    "R2_rebalance_on_upward": ["hold"],
+    "R3_rebalance_on_downward": ["hold"],
+    "R3_rebalance_on_upward": ["hold"],
+    "R4_rebalance_on_downward": ["match"],
+    "R4_rebalance_on_upward": ["hold"]
+  },
+  "notes": "Iter 14: 4-REGIME granularity. R1 (0-3to7% DD) ULTRA aggressive TQQQ. R2 (R1-8to15% DD) passthrough. R3 (R2-18to30% DD) passthrough. R4 (deepest, 18%+ DD) cash-dominant (≥54% normalized CASH). CASH searchable in R2/R3/R4. Hypothesis: an extra intermediate band (R3) might smooth the R2→R4 transition during slow grinds, capturing more recovery upside while still hitting cash-heavy R4 at deep crisis. dd_t1 narrower (3-7%) since R1 is aggressive."
+}
