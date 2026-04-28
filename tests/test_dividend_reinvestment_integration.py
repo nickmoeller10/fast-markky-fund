@@ -241,20 +241,34 @@ def test_dividend_on_regime_change_day_routes_to_post_change_regime(
     isolate_yf, deep_dd_xlu_panel
 ):
     """A dividend that lands on the same day a R1→R2 transition fires.
+
     Order of operations (per backtest.py): mark-to-market → dividend →
-    regime → rebalance. So the dividend lands as cash (or shares) BEFORE
-    the rebalance to R2's all-cash allocation. Total NAV must remain
-    correct after rebalance: dividend cash + value of held shares (now
-    sold and re-bought as $) all add up."""
+    regime-decision → rebalance. So the dividend lands as cash BEFORE the
+    rebalance to R2's all-cash allocation, and the rebalance must absorb
+    that cash into the new $ allocation. If a future change reorders these
+    blocks (rebalance before dividend), the dividend cash would be left
+    dangling and Cash[transition_day] would be non-zero — exactly the
+    same shape as the 2026-04-28 mark-to-market bug.
+
+    Because the regime decision uses yesterday's dd (T+1 lag), the actual
+    rebalance fires on the day AFTER dd first crosses r1_high. We pick
+    that day for the dividend to genuinely exercise the
+    dividend-AND-rebalance-on-the-same-day ordering.
+    """
     panel = deep_dd_xlu_panel
     cfg = _div_cfg(target="cash", r1_alloc="XLU", r1_high=0.10)
 
     qqq = panel["QQQ"]
     dd = (qqq.cummax() - qqq) / qqq.cummax()
-    transition_idx = int(np.where(dd.values > 0.10)[0][0])
-    transition_date = panel.index[transition_idx]
+    dd_cross_idx = int(np.where(dd.values > 0.10)[0][0])
+    rebalance_idx = dd_cross_idx + 1
+    assert 1 < rebalance_idx < len(panel) - 2, (
+        f"rebalance_idx={rebalance_idx} too close to panel edge — panel "
+        f"design degraded; cross at {dd_cross_idx}"
+    )
+    rebalance_date = panel.index[rebalance_idx]
 
-    div = _div_df(panel, [(transition_date.strftime("%Y-%m-%d"), "XLU", 0.20)])
+    div = _div_df(panel, [(rebalance_date.strftime("%Y-%m-%d"), "XLU", 0.20)])
 
     eq, _, divs = run_backtest(
         panel, cfg, compute_drawdown_from_ath, determine_regime,
@@ -262,21 +276,53 @@ def test_dividend_on_regime_change_day_routes_to_post_change_regime(
     )
 
     assert len(divs) == 1, f"Expected 1 dividend, got {len(divs)}"
+    rebalance_row = eq.iloc[rebalance_idx]
+    assert str(rebalance_row["Rebalanced"]) == "Rebalanced", (
+        f"rebalance_idx={rebalance_idx} did not actually rebalance — "
+        f"panel design or T+1 assumption broke. Row: {dict(rebalance_row)}"
+    )
+    assert str(rebalance_row["Portfolio_Regime"]) == "R2", (
+        f"Portfolio not in R2 on rebalance day; got "
+        f"{rebalance_row['Portfolio_Regime']!r}"
+    )
 
-    row = eq.iloc[transition_idx]
+    # Mark invariant on the rebalance row.
     manual = 0.0
     for t in cfg["allocation_tickers"]:
         col = f"{t}_shares"
         if col in eq.columns and t in panel.columns:
-            s = float(row.get(col, 0) or 0)
-            p = panel.loc[transition_date, t]
+            s = float(rebalance_row.get(col, 0) or 0)
+            p = panel.loc[rebalance_date, t]
             if pd.notna(p):
                 manual += s * float(p)
-    manual += float(row.get("Cash", 0) or 0)
-    v = float(row["Value"])
+    manual += float(rebalance_row.get("Cash", 0) or 0)
+    v = float(rebalance_row["Value"])
     assert abs(v - manual) / max(abs(v), 1.0) <= 5e-6, (
-        f"Mark invariant violated on regime-change day with dividend: "
+        f"Mark invariant violated on dividend+rebalance day: "
         f"V={v:.4f}, manual={manual:.4f}"
+    )
+
+    # The dividend cash must have been absorbed by the rebalance into the $
+    # sleeve. After R2 rebalance + dividend, Cash should be 0 (R2 is
+    # 100% $, target='cash' means dividend goes to Cash, then the rebalance
+    # sweeps Cash into $ shares as part of portfolio_value_with_cash).
+    cash_after = float(rebalance_row.get("Cash", 0) or 0)
+    assert cash_after == pytest.approx(0.0, abs=1e-6), (
+        f"Cash on rebalance day should be 0 (dividend swept into $ sleeve); "
+        f"got Cash={cash_after:.4f}. This is the failure shape of a "
+        f"reorder-rebalance-before-dividend bug."
+    )
+
+    # And the dividend amount must be preserved in the post-rebalance
+    # equity. Pre-rebalance NAV ≈ 200 XLU shares × $50 = $10,000; dividend
+    # = 200 × $0.20 = $40; post-rebalance V should be ≈ $10,040 (modulo
+    # tiny $ APY accrual over the few days from start).
+    initial_xlu_shares = 10_000.0 / 50.0
+    expected_dividend = initial_xlu_shares * 0.20
+    expected_floor = 10_000.0 + expected_dividend - 1.0   # 1$ slack for $ APY
+    assert v >= expected_floor, (
+        f"Dividend amount lost on rebalance day. V={v:.4f}, "
+        f"expected ≥ {expected_floor:.4f} (start + dividend − slack)"
     )
 
 
