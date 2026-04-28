@@ -12,8 +12,6 @@ thresholds.
 """
 from __future__ import annotations
 
-import copy
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -292,9 +290,8 @@ def test_regime_change_clears_active_override(
 @pytest.mark.integration
 def test_invalid_panel_sum_raises_at_backtest_start(isolate_yf, flat_panel):
     """A malformed (sum != 1.0) enabled override panel must raise via
-    validate_panel_sums — caught before any backtest day runs."""
-    from signal_override_engine import validate_panel_sums
-
+    validate_panel_sums when called from inside run_backtest — caught
+    before any backtest day runs."""
     cfg = _override_cfg(
         upside={
             **_disabled_panel(),
@@ -303,20 +300,27 @@ def test_invalid_panel_sum_raises_at_backtest_start(isolate_yf, flat_panel):
         },
     )
     with pytest.raises((ValueError, AssertionError)):
-        validate_panel_sums(cfg)
+        run_backtest(
+            flat_panel, cfg, compute_drawdown_from_ath, determine_regime,
+            rebalance_portfolio,
+        )
 
 
 @pytest.mark.integration
-def test_override_active_on_first_backtest_day(isolate_yf, monkeypatch, flat_panel):
-    """If Signal_total[day-0] is already past threshold, override should be
-    active on (or one bar after, depending on T+1) the first row — not
-    silently default to 'none' due to uninitialized state."""
+def test_override_fires_on_first_post_initialization_day(
+    isolate_yf, monkeypatch, flat_panel
+):
+    """Day 0 runs the initial regime open and resets signal_override_mode to
+    'none' (backtest.py:1105). With a constant Signal_total > threshold, the
+    override must fire on day 1 — the first day where the override block
+    actually runs. This pins the exact day rather than allowing a 3-row
+    window that would mask an off-by-one regression."""
     panel = flat_panel
     cfg = _override_cfg(
         upside={
             **_disabled_panel(),
             "enabled": True, "direction": "above", "threshold": 1.0,
-            "label": "from-day-0", "XLU": 1.0,
+            "label": "from-day-1", "XLU": 1.0,
         },
     )
     sig = {d: 2.0 for d in panel.index}
@@ -325,7 +329,9 @@ def test_override_active_on_first_backtest_day(isolate_yf, monkeypatch, flat_pan
     eq, _, _ = run_backtest(
         panel, cfg, compute_drawdown_from_ath, determine_regime, rebalance_portfolio
     )
-    early_states = eq["Signal_override_active"].iloc[:3].astype(str).tolist()
-    assert "upside" in early_states, (
-        f"Override never activated even with constant high signal: {early_states}"
+    day1_state = str(eq["Signal_override_active"].iloc[1])
+    assert day1_state == "upside", (
+        f"Override should fire on row 1 with constant Signal_total > threshold; "
+        f"got {day1_state!r}. Full first-3 row states: "
+        f"{eq['Signal_override_active'].iloc[:3].astype(str).tolist()}"
     )
