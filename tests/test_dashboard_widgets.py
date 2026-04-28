@@ -1,14 +1,14 @@
 """
 Unit tests for dashboard widget data resolution.
-Protects: dashboard.todays_regime_status — the pure-data function behind the
-"Today's Status" panel. The render function itself isn't tested (requires
+Protects: dashboard_data.todays_regime_status — the pure-data function behind
+the "Today's Status" panel. The render function itself isn't tested (requires
 streamlit runtime); test coverage focuses on correct field extraction and
 the override → base-allocation fallback.
 """
 import pandas as pd
 import pytest
 
-from dashboard import todays_regime_status
+from dashboard_data import todays_regime_status
 
 
 def _row(

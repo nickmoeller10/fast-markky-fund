@@ -24,20 +24,18 @@ from data_loader import (
     _attach_synthetic_columns,
     _split_real_and_synthetic,
 )
+from worst_case_synthetic import (
+    build_synth_qqq_tqqq,
+    clamp_return,
+    compute_qqq_ixic_beta,
+    initial_qqq_price,
+)
 
 
 # Sentinel "always available" date for synthetic tickers — used so the
 # simulator never sends "$"/"CASH" through yfinance. Older than ^IXIC's
 # 1985-02-01 inception, so synthetic tickers don't gate the start date.
 _SYNTHETIC_EARLIEST = pd.Timestamp("1980-01-01")
-
-
-# =====================================================================
-# Helper → Clamp extreme returns to prevent synthetic blow-ups
-# =====================================================================
-def clamp_return(r, min_r=-0.99, max_r=3.00):
-    """Clamps extreme returns to avoid synthetic blow-ups."""
-    return np.clip(r, min_r, max_r)
 
 
 # =====================================================================
@@ -163,7 +161,10 @@ def generate_worst_case_prices(config, requested_tickers, start_date=None, end_d
     if ixic_raw.empty:
         raise RuntimeError("[SIMULATOR] ERROR: Could not download ^IXIC (NASDAQ Composite).")
     
-    ixic_close = ixic_raw["Close"].dropna()
+    # `.squeeze("columns")` collapses the single-ticker DataFrame to a Series so
+    # downstream `float(ixic_close.iloc[0])` doesn't raise the pandas FutureWarning
+    # about implicit float() on a 1-element Series.
+    ixic_close = ixic_raw["Close"].squeeze("columns").dropna()
     ixic_ret = ixic_close.pct_change().dropna()
     
     log(f"[SIMULATOR] Loaded ^IXIC history: {len(ixic_close)} rows")
@@ -229,128 +230,16 @@ def generate_worst_case_prices(config, requested_tickers, start_date=None, end_d
     log(f"[SIMULATOR] Real TQQQ inception: {tqqq_start}")
     
     # ------------------------------------------------------------
-    # 3. Calculate correlation between QQQ and ^IXIC for realistic simulation
+    # 3. Compute QQQ vs ^IXIC beta for realistic synthetic returns
     # ------------------------------------------------------------
-    if "QQQ" in real_close.columns and qqq_start:
-        # Get overlapping period
-        qqq_data = real_close["QQQ"].dropna()
-        overlap_start = max(qqq_data.index.min(), ixic_close.index.min())
-        overlap_end = min(qqq_data.index.max(), ixic_close.index.max())
-        
-        if overlap_start < overlap_end:
-            overlap_ixic = ixic_close.loc[overlap_start:overlap_end]
-            overlap_qqq = qqq_data.loc[overlap_start:overlap_end]
-            
-            # Align indices
-            common_dates = overlap_ixic.index.intersection(overlap_qqq.index)
-            if len(common_dates) > 30:  # Need enough data points
-                ixic_ret_overlap = overlap_ixic.loc[common_dates].pct_change().dropna()
-                qqq_ret_overlap = overlap_qqq.loc[common_dates].pct_change().dropna()
-                
-                # Calculate correlation and beta
-                common_ret_dates = ixic_ret_overlap.index.intersection(qqq_ret_overlap.index)
-                if len(common_ret_dates) > 30:
-                    # Extract values as numpy arrays
-                    ixic_values = ixic_ret_overlap.loc[common_ret_dates].values
-                    qqq_values = qqq_ret_overlap.loc[common_ret_dates].values
-                    
-                    # Ensure they're 1D arrays
-                    if ixic_values.ndim > 1:
-                        ixic_values = ixic_values.flatten()
-                    if qqq_values.ndim > 1:
-                        qqq_values = qqq_values.flatten()
-                    
-                    # Ensure same length
-                    min_len = min(len(ixic_values), len(qqq_values))
-                    if min_len > 30:
-                        ixic_values = ixic_values[:min_len]
-                        qqq_values = qqq_values[:min_len]
-                        
-                        correlation = np.corrcoef(ixic_values, qqq_values)[0, 1]
-                        covariance = np.cov(ixic_values, qqq_values)[0, 1]
-                        ixic_variance = np.var(ixic_values)
-                        beta = covariance / ixic_variance if ixic_variance > 0 else 1.0
-                        
-                        log(f"[SIMULATOR] QQQ/^IXIC correlation: {correlation:.4f}")
-                        log(f"[SIMULATOR] QQQ/^IXIC beta: {beta:.4f}")
-                    else:
-                        correlation = 0.95
-                        beta = 1.0
-                        log(f"[SIMULATOR] Using default QQQ/^IXIC correlation: {correlation:.4f}")
-                else:
-                    correlation = 0.95  # Default high correlation
-                    beta = 1.0
-                    log(f"[SIMULATOR] Using default QQQ/^IXIC correlation: {correlation:.4f}")
-            else:
-                correlation = 0.95
-                beta = 1.0
-                log(f"[SIMULATOR] Using default QQQ/^IXIC correlation: {correlation:.4f}")
-        else:
-            correlation = 0.95
-            beta = 1.0
-            log(f"[SIMULATOR] Using default QQQ/^IXIC correlation: {correlation:.4f}")
-    else:
-        correlation = 0.95
-        beta = 1.0
-        log(f"[SIMULATOR] Using default QQQ/^IXIC correlation: {correlation:.4f}")
-    
+    correlation, beta = compute_qqq_ixic_beta(ixic_close, real_close, qqq_start)
+
     # ------------------------------------------------------------
-    # 4. Build synthetic QQQ and TQQQ from ^IXIC
+    # 4. Build synthetic QQQ and TQQQ price paths from ^IXIC
     # ------------------------------------------------------------
-    # QQQ is entirely based on NASDAQ Composite (^IXIC), not real QQQ data
-    # TQQQ is 3x leveraged QQQ
-    # Use full ^IXIC index for simulation, but we'll filter to simulation_start_date later
+    initial_qqq = initial_qqq_price(ixic_close, real_close, qqq_start)
+    synth_qqq, synth_tqqq = build_synth_qqq_tqqq(ixic_close, ixic_ret, beta, initial_qqq)
     full_index = ixic_close.index
-    synth_qqq = pd.Series(index=full_index, dtype=float)
-    synth_tqqq = pd.Series(index=full_index, dtype=float)
-    
-    # Initialize QQQ based on ^IXIC (normalize to a reasonable starting price)
-    # Use a simple scaling factor: QQQ typically trades around 1/10th of ^IXIC
-    # But we'll use beta-adjusted scaling for more accuracy
-    initial_ixic = float(ixic_close.iloc[0])
-    
-    # If we have real QQQ data, use it to calibrate the initial price
-    if qqq_start and "QQQ" in real_close.columns:
-        first_qqq_price = float(real_close["QQQ"].dropna().iloc[0])
-        # Scale ^IXIC to QQQ price level at QQQ's real inception
-        ixic_at_qqq_start = float(ixic_close.loc[qqq_start]) if qqq_start in ixic_close.index else initial_ixic
-        price_ratio = first_qqq_price / ixic_at_qqq_start
-        initial_qqq_price = initial_ixic * price_ratio
-        log(f"[SIMULATOR] Calibrated QQQ initial price from real QQQ data: ${initial_qqq_price:.2f}")
-    else:
-        # Default: QQQ typically trades around 1/10th of ^IXIC
-        initial_qqq_price = initial_ixic / 10.0
-        log(f"[SIMULATOR] Using default QQQ initial price: ${initial_qqq_price:.2f}")
-    
-    # TQQQ starts at 1/3 of QQQ (since it's 3x leveraged, it typically starts lower)
-    initial_tqqq_price = initial_qqq_price / 3.0
-    
-    synth_qqq.iloc[0] = initial_qqq_price
-    synth_tqqq.iloc[0] = initial_tqqq_price
-    
-    log(f"[SIMULATOR] Initial QQQ price (from ^IXIC): ${initial_qqq_price:.2f}")
-    log(f"[SIMULATOR] Initial TQQQ price (3x leveraged): ${initial_tqqq_price:.2f}")
-    
-    # Build synthetic series day-by-day
-    for i in range(1, len(full_index)):
-        d = full_index[i]
-        prev = full_index[i - 1]
-        
-        # Get ^IXIC return for this date (safely access Series)
-        if d in ixic_ret.index:
-            r_ixic = float(ixic_ret.loc[d])
-        else:
-            r_ixic = 0.0
-        
-        # QQQ return: beta-adjusted ^IXIC return
-        # QQQ closely tracks NASDAQ-100 which tracks NASDAQ Composite
-        r_qqq = clamp_return(r_ixic * beta)
-        
-        # TQQQ is 3x QQQ returns (triple leveraged)
-        r_tqqq = clamp_return(r_qqq * 3.0)
-        
-        synth_qqq.iloc[i] = synth_qqq.iloc[i-1] * (1 + r_qqq)
-        synth_tqqq.iloc[i] = synth_tqqq.iloc[i-1] * (1 + r_tqqq)
     
     # ------------------------------------------------------------
     # 5. QQQ and TQQQ are entirely synthetic (no real data splicing)

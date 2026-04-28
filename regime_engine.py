@@ -1,6 +1,7 @@
+import math
 
 from utils import log
-import math
+
 
 def compute_drawdown_from_ath(series):
     """Drawdown vs running all-time high. Returns (dd, ath) — dd in [0, 1]."""
@@ -9,66 +10,44 @@ def compute_drawdown_from_ath(series):
     return dd, ath
 
 
-def determine_regime(dd_value, config, date=None):
-
-    # Handle NaN drawdowns explicitly (check before conversion)
+def _coerce_dd_value(dd_value, date):
+    """Return float dd or None (with one log line) for NaN/invalid inputs."""
     if dd_value is None:
-        if date:
-            log(f"!! Drawdown is None on {date} — cannot determine regime.")
-        else:
-            log("!! Drawdown is None — cannot determine regime.")
+        log(f"!! Drawdown is None{f' on {date}' if date else ''} — cannot determine regime.")
         return None
-    
-    # Check for NaN (works with both numpy and Python types)
     try:
         if math.isnan(dd_value):
-            if date:
-                log(f"!! Drawdown is NaN on {date} — cannot determine regime.")
-            else:
-                log("!! Drawdown is NaN — cannot determine regime.")
+            log(f"!! Drawdown is NaN{f' on {date}' if date else ''} — cannot determine regime.")
             return None
     except (TypeError, ValueError):
-        pass  # Not a numeric type that can be NaN
-    
-    # Convert to Python float if it's a numpy type to avoid formatting issues
+        pass
     try:
-        if hasattr(dd_value, 'item'):
+        if hasattr(dd_value, "item"):
             dd_value = dd_value.item()
-        dd_value = float(dd_value)
+        return float(dd_value)
     except (ValueError, TypeError):
-        if date:
-            log(f"!! Drawdown is not a valid number on {date}: {dd_value}")
-        else:
-            log(f"!! Drawdown is not a valid number: {dd_value}")
+        log(f"!! Drawdown is not a valid number{f' on {date}' if date else ''}: {dd_value}")
         return None
 
-    # Extract regimes in fixed order
+
+def determine_regime(dd_value, config, date=None):
+    """Map a drawdown value to a regime label using config['regimes'] bands.
+
+    Non-last regimes use [low, high); the last regime uses [low, high].
+    NaN/None/non-numeric inputs return None (logged once).
+    """
+    dd_value = _coerce_dd_value(dd_value, date)
+    if dd_value is None:
+        return None
+
     regime_keys = list(config["regimes"].keys())
-
     for i, regime in enumerate(regime_keys):
-
         params = config["regimes"][regime]
+        low, high = params["dd_low"], params["dd_high"]
+        is_last = i == len(regime_keys) - 1
+        in_band = low <= dd_value <= high if is_last else low <= dd_value < high
+        if in_band:
+            return regime
 
-        low = params["dd_low"]
-        high = params["dd_high"]
-        log(f"Checking {regime}: low={low}, high={high}, dd={dd_value:.4f}")
-
-        is_last = (i == len(regime_keys) - 1)
-
-        # Last regime uses inclusive high
-        if is_last:
-            if low <= dd_value <= high:
-                log(f"Regime determined: {regime} (dd = {dd_value:.4f})")
-                return regime
-        else:
-            if low <= dd_value < high:
-                log(f"Regime determined: {regime} (dd = {dd_value:.4f})")
-                return regime
-
-    # If no regime found
-    if date:
-        log(f"!! No regime matched for dd = {dd_value:.4f} on {date}")
-    else:
-        log(f"!! No regime matched for dd = {dd_value:.4f}")
-
+    log(f"!! No regime matched for dd = {dd_value:.4f}{f' on {date}' if date else ''}")
     return None
